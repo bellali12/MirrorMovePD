@@ -62,6 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
                 Card(
+                  color: Color.fromARGB(255, 169, 189, 195),
                   child: Padding(
                     padding: const EdgeInsets.all(12.0),
                     child: Row(
@@ -69,13 +70,21 @@ class _HomeScreenState extends State<HomeScreen> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Daily Activity"),
-                            Text("Workout Duration"),
-                            Text("20 mins/60 mins"),
-                            Text("Daily Medicine Intake"),
-                            Text("2/4"),
+                            Text(
+                              "Workout Duration",
+                              style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              "20 mins / 60 mins",
+                              style: GoogleFonts.poppins(
+                                color: Color.fromARGB(255, 252, 240, 240),
+                              ),
+                            ),
                           ],
-                        ), //TODO: customize text look
+                        ),
                         Column(
                           children: [
                             TextButton(
@@ -85,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             Container(
                               width: 200,
                               height: 200,
-                              color: Colors.white,
+                              color: const Color.fromARGB(255, 255, 255, 255),
                               child: BarChartWidget(),
                             ),
                           ],

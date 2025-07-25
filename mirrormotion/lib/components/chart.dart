@@ -71,6 +71,7 @@ class _BarChartWidgetState extends State<BarChartWidget> {
 
   BarChartData mainBarData() {
     return BarChartData(
+      backgroundColor: Colors.transparent,
       barTouchData: BarTouchData(
         touchTooltipData: BarTouchTooltipData(
           getTooltipColor: (_) => Colors.blueGrey,

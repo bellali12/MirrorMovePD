@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mirrormotion/routes.dart';
+import 'package:mirrormotion/size_config.dart';
 
 void main() {
   runApp(const MyApp());
@@ -11,6 +12,7 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
+    SizeConfig().init(context);
     return MaterialApp(
       title: 'MirrorMotion',
       theme: ThemeData(

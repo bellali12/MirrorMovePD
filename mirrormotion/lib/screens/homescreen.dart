@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mirrormotion/components/chart.dart';
+import 'package:mirrormotion/size_config.dart';
+import 'package:mirrormotion/screens/sessionscreen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -10,6 +12,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  String todayVideoPath = "assets/IMG_7837.MOV";
+  String todayThumbnailPath = "assets/IMG_8248.jpg";
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -17,9 +22,9 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Center(
           child: Padding(
-            padding: const EdgeInsets.symmetric(
+            padding: EdgeInsets.symmetric(
               vertical: 0.0,
-              horizontal: 30.0,
+              horizontal: SizeConfig.horizontal! * 5,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -65,41 +70,104 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Color.fromARGB(255, 169, 189, 195),
                   child: Padding(
                     padding: const EdgeInsets.all(12.0),
-                    child: Row(
+                    child: Column(
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
                               "Workout Duration",
                               style: GoogleFonts.poppins(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
+                                fontSize: 22,
                               ),
                             ),
-                            Text(
-                              "20 mins / 60 mins",
-                              style: GoogleFonts.poppins(
-                                color: Color.fromARGB(255, 252, 240, 240),
-                              ),
-                            ),
-                          ],
-                        ),
-                        Column(
-                          children: [
                             TextButton(
                               onPressed: () {},
                               child: const Text("See All"),
                             ),
-                            Container(
-                              width: 200,
-                              height: 200,
-                              color: const Color.fromARGB(255, 255, 255, 255),
-                              child: BarChartWidget(),
+                          ],
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    "20/60 mins",
+                                    style: GoogleFonts.poppins(
+                                      color: Color.fromARGB(255, 255, 211, 211),
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+
+                                  // Text(
+                                  //   "60 mins",
+                                  //   style: GoogleFonts.poppins(
+                                  //     color: Color.fromARGB(255, 252, 240, 240),
+                                  //     fontSize: 20,
+                                  //     fontWeight: FontWeight.bold,
+                                  //   ),
+                                  // ),
+                                ],
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Container(
+                                  width: 200,
+                                  height: 200,
+                                  color: const Color.fromARGB(0, 255, 255, 255),
+                                  child: BarChartWidget(),
+                                ),
+                              ],
                             ),
                           ],
                         ),
                       ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Text(
+                      "Daily Dance Workout",
+                      style: GoogleFonts.poppins(
+                        color: Color.fromARGB(255, 255, 255, 255),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Icon(
+                      Icons.favorite,
+                      color: const Color.fromARGB(255, 242, 191, 215),
+                    ),
+                  ],
+                ),
+                // video thumbnail
+                SizedBox(
+                  // width: SizeConfig.horizontal! * 90,
+                  height: SizeConfig.vertical! * 30,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: InkWell(
+                      onTap: () {
+                        // open the session screen with the specified video
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                SessionScreen(videoPath: todayVideoPath),
+                          ),
+                        );
+                      },
+                      child: Image.asset(todayThumbnailPath, fit: BoxFit.cover),
                     ),
                   ),
                 ),

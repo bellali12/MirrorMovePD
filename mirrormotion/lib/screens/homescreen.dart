@@ -154,20 +154,39 @@ class _HomeScreenState extends State<HomeScreen> {
                 SizedBox(
                   // width: SizeConfig.horizontal! * 90,
                   height: SizeConfig.vertical! * 30,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: InkWell(
-                      onTap: () {
-                        // open the session screen with the specified video
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                SessionScreen(videoPath: todayVideoPath),
+                  child: InkWell(
+                    onTap: () {
+                      // open the session screen with the specified video
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              SessionScreen(videoPath: todayVideoPath),
+                        ),
+                      );
+                    },
+                    child: Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: Image.asset(
+                            todayThumbnailPath,
+                            fit: BoxFit.cover,
                           ),
-                        );
-                      },
-                      child: Image.asset(todayThumbnailPath, fit: BoxFit.cover),
+                        ),
+                        Center(
+                          child: Icon(
+                            Icons.play_circle_fill,
+                            size: 60,
+                            color: const Color.fromARGB(
+                              255,
+                              255,
+                              213,
+                              213,
+                            ).withValues(alpha: 0.9),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

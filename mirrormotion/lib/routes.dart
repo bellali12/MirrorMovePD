@@ -4,7 +4,7 @@ import 'package:mirrormotion/screens/signupscreen.dart';
 // import 'package:mirrormotion/screens/sessionscreen.dart';
 
 var routes = {
-  '/': (context) => const HomeScreen(),
+  '/': (context) => const SignupScreen(),
   '/login': (context) => const LoginScreen(),
   '/signup': (context) => const SignupScreen(),
   // '/session': (context) => const SessionScreen(),

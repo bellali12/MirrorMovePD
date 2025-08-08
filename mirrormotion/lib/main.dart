@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:mirrormotion/routes.dart';
 import 'package:mirrormotion/size_config.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:mirrormotion/firebase_options.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 

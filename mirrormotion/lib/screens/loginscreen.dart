@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mirrormotion/size_config.dart';
+import 'package:mirrormotion/services/auth.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -9,6 +10,9 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  TextEditingController emailController = TextEditingController();
+  TextEditingController passwordController = TextEditingController();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -27,6 +31,7 @@ class _LoginScreenState extends State<LoginScreen> {
               horizontal: 24.0,
             ),
             child: TextField(
+              controller: emailController,
               keyboardType: TextInputType.emailAddress,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
@@ -48,6 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
               horizontal: 24.0,
             ),
             child: TextField(
+              controller: passwordController,
               keyboardType: TextInputType.visiblePassword,
               obscureText: true,
               style: const TextStyle(color: Colors.white),
@@ -77,7 +83,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   horizontal: 32.0,
                 ),
               ),
-              onPressed: () {},
+              onPressed: () {
+                Auth()
+                    .login(emailController.text, passwordController.text)
+                    .then((value) {
+                      Navigator.pushNamed(context, '/homescreen');
+                    });
+              },
               child: const Text(
                 'Confirm',
                 style: TextStyle(color: Colors.white),

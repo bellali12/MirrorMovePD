@@ -74,5 +74,29 @@
 # my_instance2.greet()
 
 import mediapipe as mp
+import cv2
 
-# TODO: get some videos of people in various use cases
+videoPath = "IMG_8404.mov"
+
+# Setup Mediapipe
+mp_pose = mp.solutions.pose
+pose = mp_pose.Pose()
+mp_drawing = mp.solutions.drawing_utils
+
+# Video Input Capture
+cap = cv2.VideoCapture(videoPath)  # 0 for webcam
+
+while cap.isOpened():
+    success, frame = cap.read()
+    if not success:
+        print("Ignoring empty camera frame.")
+        break
+
+    # Convert the BGR image to RGB.
+    image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = pose.process(image)
+
+    if results.pose_landmarks:
+        # Draw the pose annoptation on the image.
+        mp_drawing.draw_landmarks(
+            frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)

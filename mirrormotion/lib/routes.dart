@@ -7,5 +7,6 @@ var routes = {
   '/': (context) => const SignupScreen(),
   '/login': (context) => const LoginScreen(),
   '/signup': (context) => const SignupScreen(),
+  '/homescreen': (context) => const HomeScreen(),
   // '/session': (context) => const SessionScreen(),
 };

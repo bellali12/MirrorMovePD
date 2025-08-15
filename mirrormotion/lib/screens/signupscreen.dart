@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mirrormotion/size_config.dart';
+import 'package:mirrormotion/services/auth.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -9,6 +10,43 @@ class SignupScreen extends StatefulWidget {
 }
 
 class _SignupScreenState extends State<SignupScreen> {
+  TextEditingController emailController = TextEditingController();
+  TextEditingController passwordController = TextEditingController();
+  TextEditingController retypePasswordController = TextEditingController();
+
+  bool validCredentials() {
+    if (emailController.text.isEmpty ||
+        passwordController.text.isEmpty ||
+        retypePasswordController.text.isEmpty) {
+      return false;
+    }
+
+    if (passwordController.text != retypePasswordController.text) {
+      return false;
+    }
+
+    // valid email regex
+    String emailPattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$';
+    RegExp emailRegex = RegExp(emailPattern);
+    if (!emailRegex.hasMatch(emailController.text)) {
+      return false;
+    }
+
+    if (passwordController.text.length < 6) {
+      return false;
+    }
+
+    // Password requirements: at least one uppercase and lowercase letter, one number, and one special character
+    String passwordPattern =
+        r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$';
+    RegExp passwordRegex = RegExp(passwordPattern);
+    if (!passwordRegex.hasMatch(passwordController.text)) {
+      return false;
+    }
+
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -27,6 +65,7 @@ class _SignupScreenState extends State<SignupScreen> {
               horizontal: 24.0,
             ),
             child: TextField(
+              controller: emailController,
               keyboardType: TextInputType.emailAddress,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
@@ -40,6 +79,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 fillColor: Color(0xFF897C7C),
                 filled: true,
               ),
+              onChanged: (value) {
+                setState(() {});
+              },
             ),
           ),
           Padding(
@@ -48,6 +90,7 @@ class _SignupScreenState extends State<SignupScreen> {
               horizontal: 24.0,
             ),
             child: TextField(
+              controller: passwordController,
               keyboardType: TextInputType.visiblePassword,
               obscureText: true,
               style: const TextStyle(color: Colors.white),
@@ -62,11 +105,15 @@ class _SignupScreenState extends State<SignupScreen> {
                 fillColor: Color(0xFF897C7C),
                 filled: true,
               ),
+              onChanged: (value) {
+                setState(() {});
+              },
             ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(24.0, 6.0, 24.0, 12.0),
             child: TextField(
+              controller: retypePasswordController,
               keyboardType: TextInputType.visiblePassword,
               obscureText: true,
               style: const TextStyle(color: Colors.white),
@@ -81,6 +128,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 fillColor: Color(0xFF897C7C),
                 filled: true,
               ),
+              onChanged: (value) {
+                setState(() {});
+              },
             ),
           ),
           SizedBox(
@@ -96,7 +146,18 @@ class _SignupScreenState extends State<SignupScreen> {
                   horizontal: 32.0,
                 ),
               ),
-              onPressed: () {},
+              onPressed: validCredentials()
+                  ? () {
+                      Auth()
+                          .signup(
+                            emailController.text.trim(),
+                            passwordController.text.trim(),
+                          )
+                          .then((value) {
+                            Navigator.pushNamed(context, '/homescreen');
+                          });
+                    }
+                  : null,
               child: const Text(
                 'Confirm',
                 style: TextStyle(color: Colors.white),

@@ -130,6 +130,106 @@ def get_head_anchor_and_angle(landmarks, image_width, image_height):
 
     # positive y is downwards so a positive angle is counterclockwise
     angle = cv2.fastAtan2(left_y - right_y, left_x - right_x)
+    return (anchor_x, anchor_y), angle
+
+
+def calculate_angle(p1, p2, p3):
+    a = ((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2) ** 0.5
+    b = ((p2.x - p3.x) ** 2 + (p2.y - p3.y) ** 2) ** 0.5
+    c = ((p3.x - p1.x) ** 2 + (p3.y - p1.y) ** 2) ** 0.5
+    if a * b == 0:
+        return 0.0
+    angle = cv2.acos((a * a + b * b - c * c) / (2 * a * b))
+    return angle * 180.0 / 3.141592653589793
+
+
+def get_pose_distance(reference_landmarks, current_landmarks):
+    """
+    To account for the potential size differences of the person in both sources, we need to do the following:
+    1. get the nose to knee distance in both sources
+    2. calculate the scale factor between both distances
+    3. multiply the reference landmarks by the scale factor
+    4. to also account for position offset, we will also get the average of the shoulder and hip positions in both sources
+    5. calculate the offset between both averages
+    6. add the offset to the reference landmarks
+    """
+    comparison_scale = 1.0
+    offset_x = 0.0
+    offset_y = 0.0
+
+    if (reference_landmarks and current_landmarks):
+        # Get the nose to knee distance in both sources
+        ref_nose = reference_landmarks[0]
+        ref_left_knee = reference_landmarks[25]
+        ref_right_knee = reference_landmarks[26]
+        ref_knee = landmark_pb2.NormalizedLandmark(
+            x=(ref_left_knee.x + ref_right_knee.x) / 2,
+            y=(ref_left_knee.y + ref_right_knee.y) / 2,
+            z=(ref_left_knee.z + ref_right_knee.z) / 2,
+            visibility=(ref_left_knee.visibility +
+                        ref_right_knee.visibility) / 2,
+        )
+        ref_nose_to_knee = ((ref_nose.x - ref_knee.x) **
+                            2 + (ref_nose.y - ref_knee.y) ** 2) ** 0.5
+        curr_nose = current_landmarks[0]
+        curr_left_knee = current_landmarks[25]
+        curr_right_knee = current_landmarks[26]
+        curr_knee = landmark_pb2.NormalizedLandmark(
+            x=(curr_left_knee.x + curr_right_knee.x) / 2,
+            y=(curr_left_knee.y + curr_right_knee.y) / 2,
+            z=(curr_left_knee.z + curr_right_knee.z) / 2,
+            visibility=(curr_left_knee.visibility +
+                        curr_right_knee.visibility) / 2,
+        )
+        curr_nose_to_knee = ((curr_nose.x - curr_knee.x) **
+                             2 + (curr_nose.y - curr_knee.y) ** 2) ** 0.5
+
+        if ref_nose_to_knee > 0:
+            comparison_scale = curr_nose_to_knee / ref_nose_to_knee
+        else:
+            pass  # TODO: consider a higher scope variable
+
+        # Get the average of the torso in both sources
+        ref_left_shoulder = reference_landmarks[11]
+        ref_right_shoulder = reference_landmarks[12]
+        ref_left_hip = reference_landmarks[23]
+        ref_right_hip = reference_landmarks[24]
+        ref_torso = landmark_pb2.NormalizedLandmark(
+            x=(ref_left_shoulder.x + ref_right_shoulder.x +
+               ref_left_hip.x + ref_right_hip.x) / 4,
+            y=(ref_left_shoulder.y + ref_right_shoulder.y +
+               ref_left_hip.y + ref_right_hip.y) / 4,
+            z=(ref_left_shoulder.z + ref_right_shoulder.z +
+               ref_left_hip.z + ref_right_hip.z) / 4,
+            visibility=(ref_left_shoulder.visibility + ref_right_shoulder.visibility +
+                        ref_left_hip.visibility + ref_right_hip.visibility) / 4,
+        )
+        curr_left_shoulder = current_landmarks[11]
+        curr_right_shoulder = current_landmarks[12]
+        curr_left_hip = current_landmarks[23]
+        curr_right_hip = current_landmarks[24]
+        curr_torso = landmark_pb2.NormalizedLandmark(
+            x=(curr_left_shoulder.x + curr_right_shoulder.x +
+               curr_left_hip.x + curr_right_hip.x) / 4,
+            y=(curr_left_shoulder.y + curr_right_shoulder.y +
+               curr_left_hip.y + curr_right_hip.y) / 4,
+            z=(curr_left_shoulder.z + curr_right_shoulder.z +
+               curr_left_hip.z + curr_right_hip.z) / 4,
+            visibility=(curr_left_shoulder.visibility + curr_right_shoulder.visibility +
+                        curr_left_hip.visibility + curr_right_hip.visibility) / 4,
+        )
+        offset_x = curr_torso.x - ref_torso.x
+        offset_y = curr_torso.y - ref_torso.y
+
+        # Calculate the landmarks distance
+        distance = 0.0
+        for ref_lm, curr_lm in zip(reference_landmarks, current_landmarks):
+            adjusted_ref_x = ref_lm.x * comparison_scale + offset_x
+            adjusted_ref_y = ref_lm.y * comparison_scale + offset_y
+            distance += ((adjusted_ref_x - curr_lm.x) ** 2 +
+                         (adjusted_ref_y - curr_lm.y) ** 2) ** 0.5
+        distance /= len(reference_landmarks)
+        return distance
 
 
 # Video Input Capture

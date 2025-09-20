@@ -75,16 +75,19 @@ class _SessionScreenState extends State<SessionScreen> {
     return Scaffold(
       appBar: AppBar(title: Text('Session Screen')),
       body: Center(
-        child: Chewie(
-          controller: ChewieController(
-            videoPlayerController: VideoPlayerController.asset(
-              widget.videoPath,
-            ),
-            aspectRatio: 16 / 9,
-            autoPlay: true,
-            looping: true,
-          ),
-        ),
+        child: Column(
+          children: [],
+        )
+        // child: Chewie(
+        //   controller: ChewieController(
+        //     videoPlayerController: VideoPlayerController.asset(
+        //       widget.videoPath,
+        //     ),
+        //     aspectRatio: 16 / 9,
+        //     autoPlay: true,
+        //     looping: true,
+        //   ),
+        // ),
       ),
     );
   }

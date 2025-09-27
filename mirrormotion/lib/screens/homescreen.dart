@@ -35,7 +35,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     Row(
                       children: [
-                        CircleAvatar(),
+                        InkWell(
+                          onTap: () {
+                            Navigator.pushNamed(context, '/profile');
+                          },
+                          child: CircleAvatar(),
+                        ),
                         SizedBox(width: 10),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,

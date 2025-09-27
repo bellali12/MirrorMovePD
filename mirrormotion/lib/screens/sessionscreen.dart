@@ -75,9 +75,7 @@ class _SessionScreenState extends State<SessionScreen> {
     return Scaffold(
       appBar: AppBar(title: Text('Session Screen')),
       body: Center(
-        child: Column(
-          children: [],
-        )
+        child: Column(children: []),
         // child: Chewie(
         //   controller: ChewieController(
         //     videoPlayerController: VideoPlayerController.asset(

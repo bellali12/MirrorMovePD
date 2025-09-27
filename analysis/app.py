@@ -36,6 +36,13 @@ class VideoPanel(ctk.CTkFrame):
         # frame = cv2.resize(frame, (VIDEO_WIDTH, VIDEO_HEIGHT))
         # Instead of resize, crop to center
         h, w, _ = frame.shape
+
+        # Scale down if frame height is larger than the image height
+        if h > VIDEO_HEIGHT:
+            scale = VIDEO_HEIGHT / h
+            frame = cv2.resize(frame, (int(w*scale), VIDEO_HEIGHT))
+            h, w, _ = frame.shape
+
         start_x = w//2 - VIDEO_WIDTH//2
         start_y = h//2 - VIDEO_HEIGHT//2
         frame = frame[start_y:start_y+VIDEO_HEIGHT,

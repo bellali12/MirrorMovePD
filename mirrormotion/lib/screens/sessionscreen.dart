@@ -90,3 +90,33 @@ class _SessionScreenState extends State<SessionScreen> {
     );
   }
 }
+
+Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.vertical,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: ,
+            children: [
+             IconButton(
+                      onPressed: () {},
+                      icon: const Icon(
+                        Icons.smart_display,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+            IconButton(
+            onPressed: () {},
+            icon: const Icon(
+            Icons.arrow_circle_left_outlined,
+            color: Colors.white,      
+
+            IconButton(
+            onPressed: () {},
+            icon: const Icon(
+            Icons.arrow_circle_right_outlined,
+            color: Colors.white,      
+

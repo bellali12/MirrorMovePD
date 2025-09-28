@@ -50,17 +50,18 @@ import 'package:video_player/video_player.dart';
  */
 
 class SessionScreen extends StatefulWidget {
-  const SessionScreen({super.key, required this.videoPath});
+  const SessionScreen({super.key});
 
-  final String videoPath;
+  // final String videoPath;
 
   @override
   State<SessionScreen> createState() => _SessionScreenState();
 }
 
 class _SessionScreenState extends State<SessionScreen> {
-  late final _videoPlayerController;
+  // late final _videoPlayerController;
 
+  /*
   @override
   void initState() {
     super.initState();
@@ -69,10 +70,48 @@ class _SessionScreenState extends State<SessionScreen> {
       setState(() {});
     });
   }
-
+*/
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      body: SafeArea(
+        child: Center(
+          // keeps the row centered in the screen
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center, // center horizontally
+            children: [
+              IconButton(
+                onPressed: () {},
+                icon: const Icon(
+                  Icons.arrow_circle_left_outlined,
+                  color: Color(0xFF8B7D7D),
+                  size: 100,
+                ),
+              ),
+              IconButton(
+                onPressed: () {},
+                icon: const Icon(
+                  Icons.smart_display,
+                  color: Color(0xFF8B7D7D),
+                  size: 100,
+                ),
+              ),
+              IconButton(
+                onPressed: () {},
+                icon: const Icon(
+                  Icons.arrow_circle_right_outlined,
+                  color: Color(0xFF8B7D7D),
+                  size: 100,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /* return Scaffold(
       appBar: AppBar(title: Text('Session Screen')),
       body: Center(
         child: Column(children: []),
@@ -89,34 +128,5 @@ class _SessionScreenState extends State<SessionScreen> {
       ),
     );
   }
+} */
 }
-
-Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.vertical,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: ,
-            children: [
-             IconButton(
-                      onPressed: () {},
-                      icon: const Icon(
-                        Icons.smart_display,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-            IconButton(
-            onPressed: () {},
-            icon: const Icon(
-            Icons.arrow_circle_left_outlined,
-            color: Colors.white,      
-
-            IconButton(
-            onPressed: () {},
-            icon: const Icon(
-            Icons.arrow_circle_right_outlined,
-            color: Colors.white,      
-

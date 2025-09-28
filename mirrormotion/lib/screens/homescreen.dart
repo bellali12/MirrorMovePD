@@ -165,8 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              SessionScreen(videoPath: todayVideoPath),
+                          builder: (context) => SessionScreen(),
                         ),
                       );
                     },
@@ -183,11 +182,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Icon(
                             Icons.play_circle_fill,
                             size: 60,
-                            color: const Color.from(
-                              alpha: 1,
-                              red: 1,
-                              green: 0.835,
-                              blue: 0.835,
+                            color: const Color.fromARGB(
+                              255,
+                              255,
+                              213,
+                              213,
                             ).withValues(alpha: 0.9),
                           ),
                         ),
@@ -195,3 +194,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

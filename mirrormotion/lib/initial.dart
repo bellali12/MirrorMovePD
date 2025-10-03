@@ -1,0 +1,20 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:mirrormotion/screens/homescreen.dart';
+import 'package:mirrormotion/screens/signupscreen.dart';
+import 'package:mirrormotion/services/auth.dart';
+
+class Initial extends StatelessWidget {
+  const Initial({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    User? user = Auth().user;
+
+    if (user == null) {
+      return const SignupScreen();
+    } else {
+      return const HomeScreen();
+    }
+  }
+}

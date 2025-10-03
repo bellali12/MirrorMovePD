@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:chewie/chewie.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'package:mirrormotion/size_config.dart';
 
 /*
   Instructor video on top and view of the user on bottom.
@@ -74,35 +76,57 @@ class _SessionScreenState extends State<SessionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              // open settings overlay
+            },
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Center(
           // keeps the row centered in the screen
-          child: Row(
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center, // center horizontally
             children: [
               IconButton(
+                iconSize: 150,
+                // Pause/Play button
                 onPressed: () {},
                 icon: const Icon(
-                  Icons.arrow_circle_left_outlined,
+                  Icons.play_circle_fill_rounded,
                   color: Color(0xFF8B7D7D),
                   size: 100,
                 ),
               ),
-              IconButton(
-                onPressed: () {},
-                icon: const Icon(
-                  Icons.smart_display,
-                  color: Color(0xFF8B7D7D),
-                  size: 100,
-                ),
-              ),
-              IconButton(
-                onPressed: () {},
-                icon: const Icon(
-                  Icons.arrow_circle_right_outlined,
-                  color: Color(0xFF8B7D7D),
-                  size: 100,
-                ),
+              const SizedBox(height: 20), // spacing
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  DifficultyButton(
+                    level: 1,
+                    color: const Color.fromARGB(255, 161, 175, 176),
+                  ),
+                  DifficultyButton(
+                    level: 2,
+                    color: const Color.fromARGB(255, 136, 153, 157),
+                  ),
+                  DifficultyButton(
+                    level: 3,
+                    color: const Color.fromARGB(255, 111, 125, 126),
+                  ),
+                  DifficultyButton(
+                    level: 4,
+                    color: const Color.fromARGB(255, 85, 98, 99),
+                  ),
+                  DifficultyButton(
+                    level: 5,
+                    color: const Color.fromARGB(255, 67, 77, 79),
+                  ),
+                ],
               ),
             ],
           ),
@@ -129,4 +153,42 @@ class _SessionScreenState extends State<SessionScreen> {
     );
   }
 } */
+}
+
+class DifficultyButton extends StatefulWidget {
+  const DifficultyButton({super.key, required this.level, required this.color});
+
+  final int level;
+  final Color color;
+
+  @override
+  State<DifficultyButton> createState() => _DifficultyButtonState();
+}
+
+class _DifficultyButtonState extends State<DifficultyButton> {
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: SizeConfig.horizontal! * 15,
+      height: SizeConfig.horizontal! * 15,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          shape: const CircleBorder(),
+          padding: const EdgeInsets.all(0),
+          backgroundColor: widget.color,
+        ),
+        onPressed: () {
+          HapticFeedback.mediumImpact();
+          // send out a signal for the companion desktop app
+        },
+        child: Text(
+          widget.level.toString(),
+          style: TextStyle(
+            fontSize: SizeConfig.horizontal! * 6,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
 }

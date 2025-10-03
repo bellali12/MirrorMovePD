@@ -19,6 +19,7 @@ class MyApp extends StatelessWidget {
     SizeConfig().init(context);
     return MaterialApp(
       title: 'MirrorMotion',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         // This is the theme of your application.
         //

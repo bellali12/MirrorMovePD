@@ -11,8 +11,12 @@ App Name: MirrorMove PD
 
 ## Timeline
 1. Introduction
-   - Product name and purpose
-   - Who you are
+   - Entry ID: 198
+   - Who you are:
+     - My name is Bella Li and I am an 11th grader at Concord Academy in Concord, Massachussets. 
+    - Product name and purpose: 
+     - My project: MirrorMove PD, uses an AI-powered interactive dance therapy to support Parkinson's patients in rehabilitation. Parkinson's Disease is a super widespread neurodegenerative diseases that lacks effective treatment options. As a dancer and avid student resaercher in Parkinson's Disease, I have learned that dance therapy is a very effective non-medical treatment that improves the movement abilities and cognition. After leading dance therapy workshops myself over the past summers, I wondered if I could create a mobile app that allows patients to participate in dance therapy workshops anytime, anywhere. Thus, I created MirrorMove PD, that 
+     
 2. Feature Overview
    - App:
      - Account system to sync activity data

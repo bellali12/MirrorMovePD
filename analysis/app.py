@@ -1,8 +1,10 @@
-from Flask import Flask, request, jsonify
+from flask import Flask, request, jsonify
 import tkinter as tk
 import customtkinter as ctk
 from PIL import Image, ImageTk
 import cv2
+import threading
+import socket
 
 # ----- CONFIG -----
 REFERENCE_VIDEO_PATH = "videos/IMG_8404.mp4"
@@ -11,6 +13,44 @@ FPS = 30
 VIDEO_WIDTH = 480
 VIDEO_HEIGHT = 640
 APP_BG_COLOR = "#d9d9d9"
+
+# ----- Flask Server -----
+app = Flask(__name__)
+
+
+@app.route('/status', methods=['GET'])
+def status():
+    return jsonify({"status": "ok"}), 200
+
+
+def run_flask(host: str = "0.0.0.0", port: int = 5000):
+    app.run(host=host, port=port)
+
+
+def get_lan_ip(prefer_prefix: str = "192.168.") -> str:
+    candidates = set()
+
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, family=socket.AF_INET):
+            candidates.add(info[4][0])
+    except Exception:
+        pass
+
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        candidates.add(s.getsockname()[0])
+    except Exception:
+        pass
+    finally:
+        s.close()
+
+    for ip in candidates:
+        if ip.startswith(prefer_prefix):
+            return ip
+
+    # TODO: there might be other addresses, handle later
+    return "127.0.0.1"
 
 
 def button_callback():
@@ -66,6 +106,7 @@ class App(ctk.CTk):
         ctk.set_default_color_theme("blue")
         self.title("MirrorMotion")
         self.configure(bg=APP_BG_COLOR)
+        self.app_connected = False
 
         content = ctk.CTkFrame(self, fg_color=APP_BG_COLOR)
         content.pack(padx=20, pady=20, fill="both", expand=True)
@@ -89,11 +130,31 @@ class App(ctk.CTk):
         self._updating = True
         self.after(self._delay, self._update_frames)
 
+    def _show_ip_popup(self):
+        if not self.app_connected:
+            lan_ip = get_lan_ip()
+            popup = ctk.CTkToplevel(self)
+            popup.title("Connection Info")
+            popup.geometry("300x150")
+            popup.configure(bg=APP_BG_COLOR)
+
+            label = ctk.CTkLabel(
+                popup, text=f"Connect your mobile app to:\nIP Address: {lan_ip}\nPort: 5000", bg=APP_BG_COLOR)
+            label.pack(pady=20, padx=20)
+
+            button = ctk.CTkButton(
+                popup, text="OK", command=popup.destroy)
+            button.pack(pady=10)
+
+            self.app_connected = True
+
     def _update_frames(self):
         if self._updating:
             self.left_panel.read_and_draw()
             self.right_panel.read_and_draw()
             self.after(self._delay, self._update_frames)
+
+            # self._show_ip_popup()
 
     def on_closing(self):
         self._updating = False

@@ -45,3 +45,30 @@ python3 app.py
 # To show pose estimation:
 python3 main.py
 ```
+
+
+
+General Concept Overview:
+- Two programs working together: mobile app + desktop companion
+- Mobile App
+  - Stats and History Tracker
+  - Session Controller
+    - Start, Pause, Stop session
+    - Select song/style
+    - View real-time feedback
+- Desktop Companion
+  - Pose Estimation using MediaPipe
+    - Input: computer webcam or whatever designated camera
+    - Output: shown on the desktop app
+    - Controllable with mobile app
+      - Communication via local network (WiFi)
+      - How to establish this connection
+    - Analysis:
+      - Obtain the pose data: give the raw video data to mediapipe
+        - Extract landmarks of the subject (x, y, z, visibility of a body part)
+        - Calculate relevant metrics (joint angles, distance, etc.)
+        - Distance: how different the user is from the reference pose
+    - Session Components:
+      - Song/Style + Reference Choreography
+      - X amount of "key frames" (poses) extracted from the source
+        - Less computation load than processing every frame

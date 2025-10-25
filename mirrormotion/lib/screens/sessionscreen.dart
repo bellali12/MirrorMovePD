@@ -61,18 +61,30 @@ class SessionScreen extends StatefulWidget {
 }
 
 class _SessionScreenState extends State<SessionScreen> {
+  bool isConnected = false;
+
   // late final _videoPlayerController;
 
-  /*
   @override
   void initState() {
     super.initState();
-    _videoPlayerController = VideoPlayerController.asset(widget.videoPath);
-    _videoPlayerController.initialize().then((_) {
-      setState(() {});
-    });
+    // _videoPlayerController = VideoPlayerController.asset(widget.videoPath);
+    // _videoPlayerController.initialize().then((_) {
+    //   setState(() {});
+    // });
+
+    if (!isConnected) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return const ConnectionPopUp();
+          },
+        );
+      });
+    }
   }
-*/
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -189,6 +201,50 @@ class _DifficultyButtonState extends State<DifficultyButton> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class ConnectionPopUp extends StatefulWidget {
+  const ConnectionPopUp({super.key});
+
+  @override
+  State<ConnectionPopUp> createState() => _ConnectionPopUpState();
+}
+
+class _ConnectionPopUpState extends State<ConnectionPopUp> {
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text("Enter connection code"),
+      content: SizedBox(
+        height: SizeConfig.vertical! * 30,
+        child: Column(
+          children: [
+            TextField(),
+            TextButton(
+              onPressed: () {},
+              child: Text(
+                "Don't have the desktop app? Click to download.",
+                style: TextStyle(
+                  // fontSize: SizeConfig.horizontal! * 3,
+                  decoration: TextDecoration.underline,
+                  color: const Color.fromARGB(255, 6, 70, 122),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+          },
+          child: Text("Cancel"),
+        ),
+        TextButton(onPressed: () {}, child: Text("Connect")),
+      ],
     );
   }
 }

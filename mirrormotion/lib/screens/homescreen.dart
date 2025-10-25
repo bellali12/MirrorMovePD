@@ -28,8 +28,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                TextField(),
+                // TextField(),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -139,7 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
 
-                const SizedBox(height: 20),
+                // const SizedBox(height: 20),
                 Row(
                   children: [
                     Text(

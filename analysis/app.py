@@ -1,10 +1,21 @@
 from flask import Flask, request, jsonify
+import socket, ipaddress
 import tkinter as tk
 import customtkinter as ctk
 from PIL import Image, ImageTk
 import cv2
 import threading
-import socket
+import time
+import os
+
+# Reduce OpenCV internal thread usage (prevents file decode from hogging CPU)
+# Tune this if your CPU has more cores; 2 often works well on macOS without starving other threads.
+OPENCV_THREADS = 2
+try:
+    cv2.setNumThreads(OPENCV_THREADS)
+    cv2.ocl.setUseOpenCL(False)
+except Exception:
+    pass
 
 # ----- CONFIG -----
 REFERENCE_VIDEO_PATH = "videos/IMG_8404.mp4"
@@ -14,28 +25,45 @@ VIDEO_WIDTH = 480
 VIDEO_HEIGHT = 640
 APP_BG_COLOR = "#d9d9d9"
 
+# Allow overriding the Flask port (useful if it is taken by something else)
+SERVER_PORT = int(os.environ.get("MIRRORMOTION_PORT", "5003"))
+
 # ----- Flask Server -----
-app = Flask(__name__)
+flask_app = Flask(__name__)
 
+is_connected = False
 
-@app.route('/status', methods=['GET'])
+@flask_app.route('/status', methods=['GET'])
 def status():
-    return jsonify({"status": "ok"}), 200
+    return jsonify({"connected": is_connected, "ip": get_lan_ip(), "port": SERVER_PORT}), 200
+
+@flask_app.route('/connect', methods=['POST'])
+def connect():
+    global is_connected
+    is_connected = True
+    return jsonify({"connected": True}), 200
+
+@flask_app.route('/disconnect', methods=['POST'])
+def disconnect():
+    global is_connected
+    is_connected = False
+    return jsonify({"connected": False}), 200
 
 
 def run_flask(host: str = "0.0.0.0", port: int = 5000):
-    app.run(host=host, port=port)
+    # threaded + no reloader to avoid spawning a second process
+    flask_app.run(host=host, port=port, threaded=True, use_reloader=False)
 
 
 def get_lan_ip(prefer_prefix: str = "192.168.") -> str:
     candidates = set()
-
     try:
         for info in socket.getaddrinfo(socket.gethostname(), None, family=socket.AF_INET):
             candidates.add(info[4][0])
     except Exception:
         pass
 
+    s = None
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -43,13 +71,24 @@ def get_lan_ip(prefer_prefix: str = "192.168.") -> str:
     except Exception:
         pass
     finally:
-        s.close()
+        try:
+            if s: s.close()
+        except Exception:
+            pass
+
+    def good(ip):
+        try:
+            a = ipaddress.ip_address(ip)
+            return a.is_private and not a.is_loopback and not str(a).endswith(".0") and not str(a).endswith(".255")
+        except Exception:
+            return False
 
     for ip in candidates:
-        if ip.startswith(prefer_prefix):
+        if ip.startswith(prefer_prefix) and good(ip):
             return ip
-
-    # TODO: there might be other addresses, handle later
+    for ip in candidates:
+        if good(ip):
+            return ip
     return "127.0.0.1"
 
 
@@ -64,37 +103,96 @@ class VideoPanel(ctk.CTkFrame):
         if not self.cap.isOpened():
             raise ValueError("Unable to open video source", source)
 
-        self.label = ctk.CTkLabel(
-            self, text="", width=VIDEO_WIDTH, height=VIDEO_HEIGHT)
+        # Ask backend for smaller frames to reduce work
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, VIDEO_WIDTH)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, VIDEO_HEIGHT)
+        # Reduce camera buffering/latency if supported
+        try:
+            if isinstance(source, int):
+                self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            pass
+
+        self.label = ctk.CTkLabel(self, text="", width=VIDEO_WIDTH, height=VIDEO_HEIGHT)
         self.label.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Worker thread state
+        self._running = True
+        self._latest_rgb = None      # store RGB frame (UI only creates PhotoImage)
+        self._latest_ver = 0         # increment when a new frame arrives
+        self._drawn_ver = -1         # last drawn version
+        self._lock = threading.Lock()
         self._frame = None
+        self._ctkimg = None  # keep a reference to CTkImage
 
-    def read_and_draw(self):
-        ret, frame = self.cap.read()
-        if not ret:
-            # TODO: Go to next video if available, for now just halt
-            return
-        # frame = cv2.resize(frame, (VIDEO_WIDTH, VIDEO_HEIGHT))
-        # Instead of resize, crop to center
-        h, w, _ = frame.shape
+        # Pace the reader to the source FPS (fallback to UI FPS, clamp to sane range)
+        src_fps = self.cap.get(cv2.CAP_PROP_FPS) or 0
+        if src_fps <= 0 or src_fps > 120:
+            src_fps = FPS
+        self._period = 1.0 / float(src_fps)
 
-        # Scale down if frame height is larger than the image height
-        if h > VIDEO_HEIGHT:
-            scale = VIDEO_HEIGHT / h
-            frame = cv2.resize(frame, (int(w*scale), VIDEO_HEIGHT))
+        # Start background reader
+        self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
+        self._reader_thread.start()
+
+    def _reader_loop(self):
+        next_t = time.monotonic()
+        while self._running:
+            ret, frame = self.cap.read()
+            if not ret:
+                # If file ended or temporary hiccup, don't spin
+                time.sleep(0.02)
+                continue
+
+            # Scale down (if needed) and center-crop in the worker thread
             h, w, _ = frame.shape
+            if h > VIDEO_HEIGHT:
+                scale = VIDEO_HEIGHT / h
+                frame = cv2.resize(frame, (int(w * scale), VIDEO_HEIGHT))
+                h, w, _ = frame.shape
 
-        start_x = w//2 - VIDEO_WIDTH//2
-        start_y = h//2 - VIDEO_HEIGHT//2
-        frame = frame[start_y:start_y+VIDEO_HEIGHT,
-                      start_x:start_x+VIDEO_WIDTH]
+            start_x = max(0, w // 2 - VIDEO_WIDTH // 2)
+            start_y = max(0, h // 2 - VIDEO_HEIGHT // 2)
+            end_x = min(w, start_x + VIDEO_WIDTH)
+            end_y = min(h, start_y + VIDEO_HEIGHT)
+            frame = frame[start_y:end_y, start_x:end_x]
 
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        img = Image.fromarray(frame)
-        self._frame = ImageTk.PhotoImage(image=img)
-        self.label.configure(image=self._frame)
+            # Convert to RGB off the UI thread
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            with self._lock:
+                self._latest_rgb = rgb
+                self._latest_ver += 1
+
+            # Throttle to source FPS so we don't starve other threads
+            next_t += self._period
+            sleep_dt = next_t - time.monotonic()
+            if sleep_dt > 0:
+                time.sleep(min(sleep_dt, 0.02))
+            else:
+                next_t = time.monotonic()
+
+    def draw_latest(self):
+        # Very light work on the UI thread: only create image if a new frame arrived
+        with self._lock:
+            if self._latest_rgb is None or self._latest_ver == self._drawn_ver:
+                return
+            rgb = self._latest_rgb
+            ver = self._latest_ver
+
+        pil_img = Image.fromarray(rgb)
+        # Use CTkImage to avoid HiDPI warning
+        self._ctkimg = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(VIDEO_WIDTH, VIDEO_HEIGHT))
+        self.label.configure(image=self._ctkimg, text="")
+        self._drawn_ver = ver
 
     def release(self):
+        self._running = False
+        try:
+            if self._reader_thread.is_alive():
+                self._reader_thread.join(timeout=0.5)
+        except Exception:
+            pass
         if self.cap.isOpened():
             self.cap.release()
 
@@ -107,6 +205,10 @@ class App(ctk.CTk):
         self.title("MirrorMotion")
         self.configure(bg=APP_BG_COLOR)
         self.app_connected = False
+
+        # Toast state
+        self._toast_window = None
+        self._toast_bind_id = None
 
         content = ctk.CTkFrame(self, fg_color=APP_BG_COLOR)
         content.pack(padx=20, pady=20, fill="both", expand=True)
@@ -130,6 +232,9 @@ class App(ctk.CTk):
         self._updating = True
         self.after(self._delay, self._update_frames)
 
+        # Start checking connection to control the toast
+        self.after(200, self._update_connection_toast)
+
     def _show_ip_popup(self):
         if not self.app_connected:
             lan_ip = get_lan_ip()
@@ -148,10 +253,91 @@ class App(ctk.CTk):
 
             self.app_connected = True
 
+    # ----- Persistent bottom-center IP toast while not connected -----
+    def _ensure_ip_toast(self):
+        if self._toast_window and self._toast_window.winfo_exists():
+            self._position_toast()
+            return
+
+        ip = get_lan_ip()
+        # Convert IP to connection code
+        connection_code = ip[8:]
+        tw = ctk.CTkToplevel(self, fg_color="#2b2b2b")
+        tw.overrideredirect(True)
+        tw.attributes("-topmost", True)
+
+        container = ctk.CTkFrame(tw, fg_color="#2b2b2b", corner_radius=12)
+        container.pack(fill="both", expand=True)
+
+        label = ctk.CTkLabel(
+            container,
+            text=f"Connection Code: {connection_code}",
+            text_color="white",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        )
+        label.pack(side="left", padx=(14, 10), pady=10)
+
+        close_btn = ctk.CTkButton(
+            container, text="✕", width=28, height=28, corner_radius=14,
+            fg_color="#444444", hover_color="#555555",
+            command=self._hide_ip_toast
+        )
+        close_btn.pack(side="right", padx=10, pady=8)
+
+        self._toast_window = tw
+        self._toast_window.update_idletasks()
+        desired_w = max(280, self._toast_window.winfo_width())
+        desired_h = self._toast_window.winfo_height()
+        self._toast_window.geometry(f"{desired_w}x{desired_h}")
+        self._position_toast()
+
+        if not self._toast_bind_id:
+            self._toast_bind_id = self.bind("<Configure>", self._on_window_configure)
+
+    def _hide_ip_toast(self):
+        if self._toast_window and self._toast_window.winfo_exists():
+            try:
+                self._toast_window.destroy()
+            except Exception:
+                pass
+        self._toast_window = None
+        if self._toast_bind_id:
+            try:
+                self.unbind("<Configure>", self._toast_bind_id)
+            except Exception:
+                pass
+            self._toast_bind_id = None
+
+    def _position_toast(self):
+        if not self._toast_window or not self._toast_window.winfo_exists():
+            return
+        self.update_idletasks()
+        tw = self._toast_window.winfo_width()
+        th = self._toast_window.winfo_height()
+        rw = self.winfo_width()
+        rh = self.winfo_height()
+        rx = self.winfo_rootx()
+        ry = self.winfo_rooty()
+        x = rx + (rw - tw) // 2
+        y = ry + rh - th - 20
+        self._toast_window.geometry(f"+{x}+{y}")
+
+    def _on_window_configure(self, _event=None):
+        self._position_toast()
+
+    def _update_connection_toast(self):
+        if not is_connected:
+            self._ensure_ip_toast()
+        else:
+            self._hide_ip_toast()
+        self.after(500, self._update_connection_toast)
+    # ----- end toast -----
+
     def _update_frames(self):
         if self._updating:
-            self.left_panel.read_and_draw()
-            self.right_panel.read_and_draw()
+            # Draw whichever panel has a new frame; UI work stays minimal
+            self.left_panel.draw_latest()
+            self.right_panel.draw_latest()
             self.after(self._delay, self._update_frames)
 
             # self._show_ip_popup()
@@ -160,20 +346,18 @@ class App(ctk.CTk):
         self._updating = False
         self.left_panel.release()
         self.right_panel.release()
+        self._hide_ip_toast()
         self.destroy()
 
 
 if __name__ == "__main__":
-    # app = ctk.CTk()
-    # app.geometry("400x150")
-
-    # button = ctk.CTkButton(
-    #     app, text="my button", command=button_callback)
-    # button.pack(padx=20, pady=20)
+    # Start Flask server in the background so mobile app can connect
+    server_thread = threading.Thread(
+        target=run_flask, kwargs={"host": "0.0.0.0", "port": SERVER_PORT}, daemon=True
+    )
+    server_thread.start()
 
     app = App()
-
     app.geometry(f"{2*VIDEO_WIDTH + 80}x{VIDEO_HEIGHT + 80}")
     app.minsize(VIDEO_WIDTH*2 + 80, VIDEO_HEIGHT + 80)
-
     app.mainloop()

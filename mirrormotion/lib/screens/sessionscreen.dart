@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:chewie/chewie.dart';
+// import 'package:chewie/chewie.dart';
 import 'package:flutter/services.dart';
-import 'package:video_player/video_player.dart';
+// import 'package:video_player/video_player.dart';
+import 'package:http/http.dart' as http;
 import 'package:mirrormotion/size_config.dart';
 
 /*
@@ -54,8 +56,6 @@ import 'package:mirrormotion/size_config.dart';
 class SessionScreen extends StatefulWidget {
   const SessionScreen({super.key});
 
-  // final String videoPath;
-
   @override
   State<SessionScreen> createState() => _SessionScreenState();
 }
@@ -63,24 +63,22 @@ class SessionScreen extends StatefulWidget {
 class _SessionScreenState extends State<SessionScreen> {
   bool isConnected = false;
 
-  // late final _videoPlayerController;
-
   @override
   void initState() {
     super.initState();
-    // _videoPlayerController = VideoPlayerController.asset(widget.videoPath);
-    // _videoPlayerController.initialize().then((_) {
-    //   setState(() {});
-    // });
 
     if (!isConnected) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        showDialog(
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final connected = await showDialog<bool>(
           context: context,
+          barrierDismissible: false,
           builder: (BuildContext context) {
             return const ConnectionPopUp();
           },
         );
+        if (mounted && (connected ?? false)) {
+          setState(() => isConnected = true);
+        }
       });
     }
   }
@@ -90,23 +88,16 @@ class _SessionScreenState extends State<SessionScreen> {
     return Scaffold(
       appBar: AppBar(
         actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              // open settings overlay
-            },
-          ),
+          IconButton(icon: const Icon(Icons.settings), onPressed: () {}),
         ],
       ),
       body: SafeArea(
         child: Center(
-          // keeps the row centered in the screen
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center, // center horizontally
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
                 iconSize: 150,
-                // Pause/Play button
                 onPressed: () {},
                 icon: const Icon(
                   Icons.play_circle_fill_rounded,
@@ -114,7 +105,7 @@ class _SessionScreenState extends State<SessionScreen> {
                   size: 100,
                 ),
               ),
-              const SizedBox(height: 20), // spacing
+              const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -146,25 +137,6 @@ class _SessionScreenState extends State<SessionScreen> {
       ),
     );
   }
-
-  /* return Scaffold(
-      appBar: AppBar(title: Text('Session Screen')),
-      body: Center(
-        child: Column(children: []),
-        // child: Chewie(
-        //   controller: ChewieController(
-        //     videoPlayerController: VideoPlayerController.asset(
-        //       widget.videoPath,
-        //     ),
-        //     aspectRatio: 16 / 9,
-        //     autoPlay: true,
-        //     looping: true,
-        //   ),
-        // ),
-      ),
-    );
-  }
-} */
 }
 
 class DifficultyButton extends StatefulWidget {
@@ -213,23 +185,127 @@ class ConnectionPopUp extends StatefulWidget {
 }
 
 class _ConnectionPopUpState extends State<ConnectionPopUp> {
+  final TextEditingController _codeCtrl = TextEditingController();
+  bool _connecting = false;
+  String? _error;
+
+  // Converts a "connection code" to host:port.
+  // Desktop shows Connection Code derived from IP with "192.168." removed.
+  // Examples:
+  //   "4.255"          -> "192.168.4.255:5003"
+  //   "192.168.4.255"  -> "192.168.4.255:5003"
+  //   "192.168.4.255:5003" -> unchanged
+  //   "4.255:5003"     -> "192.168.4.255:5003"
+  String _buildHostFromCode(String input) {
+    var s = input.trim();
+    if (s.isEmpty) return "";
+
+    // Dev shortcuts (same machine / emulators)
+    if (s == "localhost" || s == "127.0.0.1" || s == "10.0.2.2") {
+      return s.contains(":") ? s : "$s:5003";
+    }
+
+    if (s.startsWith("http://")) s = s.substring(7);
+    if (s.startsWith("https://")) s = s.substring(8);
+
+    String host = s;
+    String? port;
+
+    final colon = s.lastIndexOf(':');
+    if (colon != -1 && colon < s.length - 1) {
+      host = s.substring(0, colon);
+      port = s.substring(colon + 1);
+    }
+
+    // Short code like "4.23"
+    final looksShort = RegExp(r'^\d{1,3}\.\d{1,3}$').hasMatch(host);
+    if (looksShort) host = "192.168.$host";
+
+    port ??= "5003";
+    return "$host:$port";
+  }
+
+  Future<void> _connect() async {
+    final code = _codeCtrl.text;
+    final host = _buildHostFromCode(code);
+    if (host.isEmpty) {
+      setState(() => _error = "Enter a valid code or host.");
+      return;
+    }
+    final hostOnly = host.split(':').first;
+    if (hostOnly.endsWith(".0") || hostOnly.endsWith(".255")) {
+      setState(
+        () => _error = "Broadcast/network address not valid. Use the exact IP.",
+      );
+      return;
+    }
+
+    setState(() {
+      _connecting = true;
+      _error = null;
+    });
+
+    try {
+      final uri = Uri.parse("http://$host/connect");
+      final resp = await http
+          .post(
+            uri,
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({"code": code}),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (resp.statusCode == 200) {
+        if (!mounted) return;
+        Navigator.of(context).pop(true); // success; parent marks connected
+      } else {
+        setState(
+          () => _error = "Failed (${resp.statusCode}). Check code and Wi‑Fi.",
+        );
+      }
+    } catch (e) {
+      setState(() => _error = "Could not reach desktop. Ensure same Wi‑Fi.");
+    } finally {
+      if (mounted) setState(() => _connecting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final canSubmit = !_connecting && _codeCtrl.text.trim().isNotEmpty;
     return AlertDialog(
-      title: Text("Enter connection code"),
+      title: const Text("Enter connection code"),
       content: SizedBox(
-        height: SizeConfig.vertical! * 30,
+        width: 360,
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(),
+            TextField(
+              controller: _codeCtrl,
+              enabled: !_connecting,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: "e.g. 4.255 or 192.168.4.255",
+              ),
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) {
+                if (canSubmit) _connect();
+              },
+            ),
+            const SizedBox(height: 12),
+            if (_connecting) const CircularProgressIndicator(),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(color: Colors.red)),
+            ],
+            const SizedBox(height: 8),
             TextButton(
-              onPressed: () {},
-              child: Text(
+              onPressed: _connecting ? null : () {},
+              child: const Text(
                 "Don't have the desktop app? Click to download.",
                 style: TextStyle(
-                  // fontSize: SizeConfig.horizontal! * 3,
                   decoration: TextDecoration.underline,
-                  color: const Color.fromARGB(255, 6, 70, 122),
+                  color: Color.fromARGB(255, 6, 70, 122),
                 ),
               ),
             ),
@@ -238,12 +314,13 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
       ),
       actions: [
         TextButton(
-          onPressed: () {
-            Navigator.pop(context);
-          },
-          child: Text("Cancel"),
+          onPressed: _connecting ? null : () => Navigator.pop(context, false),
+          child: const Text("Cancel"),
         ),
-        TextButton(onPressed: () {}, child: Text("Connect")),
+        FilledButton(
+          onPressed: canSubmit ? _connect : null,
+          child: const Text("Connect"),
+        ),
       ],
     );
   }

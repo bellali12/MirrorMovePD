@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "286716406424",
+    "project_id": "mirrormove-3ca58",
+    "storage_bucket": "mirrormove-3ca58.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:286716406424:android:0360e43b53adc5ed8bfeed",
+        "android_client_info": {
+          "package_name": "com.bella.mirrormotion"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBJ-fc1Mhnnm2BBTXa-rnz4IJLhgp29j2o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

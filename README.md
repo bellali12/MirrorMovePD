@@ -72,3 +72,7 @@ General Concept Overview:
       - Song/Style + Reference Choreography
       - X amount of "key frames" (poses) extracted from the source
         - Less computation load than processing every frame
+
+
+NOTES FOR BELLA:
+For the sake of demonstration the connection logic and popups should now work. If you are running the app via an emulator and also running the desktop app on the same machine use 127.0.0.1 as the connection code. Otherwise, use whatever code is given by the desktop program's popup.

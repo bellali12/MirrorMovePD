@@ -196,13 +196,13 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
   //   "192.168.4.255"  -> "192.168.4.255:5003"
   //   "192.168.4.255:5003" -> unchanged
   //   "4.255:5003"     -> "192.168.4.255:5003"
-  String _buildHostFromCode(String input) {
+  List<String> _buildHostFromCode(String input) {
     var s = input.trim();
-    if (s.isEmpty) return "";
+    if (s.isEmpty) return [];
 
     // Dev shortcuts (same machine / emulators)
     if (s == "localhost" || s == "127.0.0.1" || s == "10.0.2.2") {
-      return s.contains(":") ? s : "$s:5003";
+      return [s.contains(":") ? s : "$s:5003"];
     }
 
     if (s.startsWith("http://")) s = s.substring(7);
@@ -219,10 +219,14 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
 
     // Short code like "4.23"
     final looksShort = RegExp(r'^\d{1,3}\.\d{1,3}$').hasMatch(host);
-    if (looksShort) host = "192.168.$host";
+    String altHost = "";
+    if (looksShort) {
+      host = "192.168.$host";
+      altHost = "10.100.$host";
+    }
 
     port ??= "5003";
-    return "$host:$port";
+    return ["$host:$port", "$altHost:$port"];
   }
 
   Future<void> _connect() async {
@@ -232,7 +236,7 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
       setState(() => _error = "Enter a valid code or host.");
       return;
     }
-    final hostOnly = host.split(':').first;
+    final hostOnly = host[0].split(':').first;
     if (hostOnly.endsWith(".0") || hostOnly.endsWith(".255")) {
       setState(
         () => _error = "Broadcast/network address not valid. Use the exact IP.",
@@ -246,7 +250,7 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
     });
 
     try {
-      final uri = Uri.parse("http://$host/connect");
+      final uri = Uri.parse("http://${host[0]}/connect");
       final resp = await http
           .post(
             uri,
@@ -259,6 +263,21 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
         if (!mounted) return;
         Navigator.of(context).pop(true); // success; parent marks connected
       } else {
+        // Attempt the altHost
+        final altUri = Uri.parse("http://${host[1]}/connect");
+        final altResp = await http
+            .post(
+              altUri,
+              headers: {"Content-Type": "application/json"},
+              body: jsonEncode({"code": code}),
+            )
+            .timeout(const Duration(seconds: 5));
+        if (altResp.statusCode == 200) {
+          if (!mounted) return;
+          Navigator.of(context).pop(true); // success; parent marks connected
+          return;
+        }
+
         setState(
           () => _error = "Failed (${resp.statusCode}). Check code and Wi‑Fi.",
         );

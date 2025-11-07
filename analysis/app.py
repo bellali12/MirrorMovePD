@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
-import socket, ipaddress
+import socket
+import ipaddress
 import tkinter as tk
 import customtkinter as ctk
 from PIL import Image, ImageTk
@@ -7,6 +8,11 @@ import cv2
 import threading
 import time
 import os
+
+"""
+ISSUES:
+- merge old toast with new popup
+"""
 
 # Reduce OpenCV internal thread usage (prevents file decode from hogging CPU)
 # Tune this if your CPU has more cores; 2 often works well on macOS without starving other threads.
@@ -33,15 +39,18 @@ flask_app = Flask(__name__)
 
 is_connected = False
 
+
 @flask_app.route('/status', methods=['GET'])
 def status():
     return jsonify({"connected": is_connected, "ip": get_lan_ip(), "port": SERVER_PORT}), 200
+
 
 @flask_app.route('/connect', methods=['POST'])
 def connect():
     global is_connected
     is_connected = True
     return jsonify({"connected": True}), 200
+
 
 @flask_app.route('/disconnect', methods=['POST'])
 def disconnect():
@@ -50,7 +59,7 @@ def disconnect():
     return jsonify({"connected": False}), 200
 
 
-def run_flask(host: str = "0.0.0.0", port: int = 5000):
+def run_flask(host: str = "0.0.0.0", port: int = SERVER_PORT):
     # threaded + no reloader to avoid spawning a second process
     flask_app.run(host=host, port=port, threaded=True, use_reloader=False)
 
@@ -72,7 +81,8 @@ def get_lan_ip(prefer_prefix: str = "192.168.") -> str:
         pass
     finally:
         try:
-            if s: s.close()
+            if s:
+                s.close()
         except Exception:
             pass
 
@@ -83,10 +93,15 @@ def get_lan_ip(prefer_prefix: str = "192.168.") -> str:
         except Exception:
             return False
 
-    for ip in candidates:
+    print("LAN IP candidates:", candidates)
+
+    sorted_candidates = sorted(candidates)
+    for ip in sorted_candidates:
         if ip.startswith(prefer_prefix) and good(ip):
             return ip
-    for ip in candidates:
+    for ip in sorted_candidates:
+        print("Checking candidate IP:", ip)
+        print("Is good?", good(ip))
         if good(ip):
             return ip
     return "127.0.0.1"
@@ -113,12 +128,14 @@ class VideoPanel(ctk.CTkFrame):
         except Exception:
             pass
 
-        self.label = ctk.CTkLabel(self, text="", width=VIDEO_WIDTH, height=VIDEO_HEIGHT)
+        self.label = ctk.CTkLabel(
+            self, text="", width=VIDEO_WIDTH, height=VIDEO_HEIGHT)
         self.label.pack(fill="both", expand=True, padx=10, pady=10)
 
         # Worker thread state
         self._running = True
-        self._latest_rgb = None      # store RGB frame (UI only creates PhotoImage)
+        # store RGB frame (UI only creates PhotoImage)
+        self._latest_rgb = None
         self._latest_ver = 0         # increment when a new frame arrives
         self._drawn_ver = -1         # last drawn version
         self._lock = threading.Lock()
@@ -132,7 +149,8 @@ class VideoPanel(ctk.CTkFrame):
         self._period = 1.0 / float(src_fps)
 
         # Start background reader
-        self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
+        self._reader_thread = threading.Thread(
+            target=self._reader_loop, daemon=True)
         self._reader_thread.start()
 
     def _reader_loop(self):
@@ -182,7 +200,8 @@ class VideoPanel(ctk.CTkFrame):
 
         pil_img = Image.fromarray(rgb)
         # Use CTkImage to avoid HiDPI warning
-        self._ctkimg = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(VIDEO_WIDTH, VIDEO_HEIGHT))
+        self._ctkimg = ctk.CTkImage(
+            light_image=pil_img, dark_image=pil_img, size=(VIDEO_WIDTH, VIDEO_HEIGHT))
         self.label.configure(image=self._ctkimg, text="")
         self._drawn_ver = ver
 
@@ -204,7 +223,8 @@ class App(ctk.CTk):
         ctk.set_default_color_theme("blue")
         self.title("MirrorMotion")
         self.configure(bg=APP_BG_COLOR)
-        self.app_connected = False
+        # self.app_connected = False
+        self._popup_shown_this_session = False
 
         # Toast state
         self._toast_window = None
@@ -235,25 +255,74 @@ class App(ctk.CTk):
         # Start checking connection to control the toast
         self.after(200, self._update_connection_toast)
 
+    def _position_generic_toast(self, win, y_offset=20):
+        if not win or not win.winfo_exists():
+            return
+        self.update_idletasks()
+        tw, th = win.winfo_width(), win.winfo_height()
+        rw, rh = self.winfo_width(), self.winfo_height()
+        rx, ry = self.winfo_rootx(), self.winfo_rooty()
+        x = rx + (rw - tw) // 2
+        y = ry + rh - th - y_offset
+        win.geometry(f"+{x}+{y}")
+
     def _show_ip_popup(self):
-        if not self.app_connected:
-            lan_ip = get_lan_ip()
-            popup = ctk.CTkToplevel(self)
-            popup.title("Connection Info")
-            popup.geometry("300x150")
-            popup.configure(bg=APP_BG_COLOR)
+        lan_ip = get_lan_ip()
 
-            label = ctk.CTkLabel(
-                popup, text=f"Connect your mobile app to:\nIP Address: {lan_ip}\nPort: 5000", bg=APP_BG_COLOR)
-            label.pack(pady=20, padx=20)
+        code = self.ip_to_connection_code(lan_ip)
 
-            button = ctk.CTkButton(
-                popup, text="OK", command=popup.destroy)
-            button.pack(pady=10)
+        connection_toast = ctk.CTkToplevel(self, fg_color="#2b2b2b")
+        connection_toast.overrideredirect(True)  # No title bar
+        connection_toast.attributes("-topmost", True)
 
-            self.app_connected = True
+        container = ctk.CTkFrame(
+            connection_toast, fg_color="#2b2b2b", corner_radius=12)
+        container.pack(fill="both", expand=True)
+
+        label = ctk.CTkLabel(
+            container,
+            text=f"Connection code: {code}",
+            text_color="white",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        )
+        label.pack(side="left", padx=(14, 10), pady=10)
+
+        connection_toast.update_idletasks()
+        desired_w = max(300, connection_toast.winfo_width())
+        desired_h = connection_toast.winfo_height()
+        connection_toast.geometry(f"{desired_w}x{desired_h}")
+        self._position_generic_toast(connection_toast, y_offset=24)
+
+        # self._toast = connection_toast
+
+        # popup.title("Connection Info")
+        # popup.geometry("300x150")
+        # popup.configure(bg=APP_BG_COLOR)
+
+        # label = ctk.CTkLabel(
+        #     popup, text=f"Connect your mobile app to:\nIP Address: {lan_ip}\nPort: {SERVER_PORT}", bg_color=APP_BG_COLOR)
+        # label.pack(pady=20, padx=20)
+
+        # button = ctk.CTkButton(
+        #     popup, text="OK", command=popup.destroy)
+        # button.pack(pady=10)
+
+        # self.app_connected = True
+        self._popup_shown_this_session = True
+
+        # if not hasattr((self, "_toast_bind_id")):
+        #     pass
 
     # ----- Persistent bottom-center IP toast while not connected -----
+    def ip_to_connection_code(self, ip: str) -> str:
+        try:
+            parts = ip.split(".")  # 192.168.12.5 --> ['192', '168', '12', '5']
+            if len(parts) == 4:
+                return ".".join(parts[2:])  # '12.5'
+            return ip
+        except Exception:
+            return ip
+
     def _ensure_ip_toast(self):
         if self._toast_window and self._toast_window.winfo_exists():
             self._position_toast()
@@ -261,7 +330,7 @@ class App(ctk.CTk):
 
         ip = get_lan_ip()
         # Convert IP to connection code
-        connection_code = ip[8:]
+        connection_code = self.ip_to_connection_code(ip)
         tw = ctk.CTkToplevel(self, fg_color="#2b2b2b")
         tw.overrideredirect(True)
         tw.attributes("-topmost", True)
@@ -292,7 +361,8 @@ class App(ctk.CTk):
         self._position_toast()
 
         if not self._toast_bind_id:
-            self._toast_bind_id = self.bind("<Configure>", self._on_window_configure)
+            self._toast_bind_id = self.bind(
+                "<Configure>", self._on_window_configure)
 
     def _hide_ip_toast(self):
         if self._toast_window and self._toast_window.winfo_exists():
@@ -328,8 +398,12 @@ class App(ctk.CTk):
     def _update_connection_toast(self):
         if not is_connected:
             self._ensure_ip_toast()
+            if not self._popup_shown_this_session:
+                self._show_ip_popup()
+
         else:
             self._hide_ip_toast()
+            self._popup_shown_this_session = True
         self.after(500, self._update_connection_toast)
     # ----- end toast -----
 

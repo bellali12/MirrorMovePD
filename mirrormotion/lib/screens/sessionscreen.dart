@@ -53,6 +53,8 @@ import 'package:mirrormotion/size_config.dart';
     - when transitioning, the user can freestyle while the system changes
  */
 
+// TODO: poll the server periodically to check connection status
+
 class SessionScreen extends StatefulWidget {
   const SessionScreen({super.key});
 
@@ -135,6 +137,29 @@ class _SessionScreenState extends State<SessionScreen> {
           ),
         ),
       ),
+      floatingActionButton: (isConnected)
+          ? null
+          : FloatingActionButton(
+              backgroundColor: Color(0xFF8B7D7D),
+              onPressed: () {
+                showDialog<bool>(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (BuildContext context) {
+                    return const ConnectionPopUp();
+                  },
+                ).then((connected) {
+                  if (mounted && (connected ?? false)) {
+                    setState(() => isConnected = true);
+                  }
+                });
+              },
+              child: const Icon(
+                Icons.connected_tv_rounded,
+                color: Colors.white,
+                size: 30,
+              ),
+            ),
     );
   }
 }
@@ -219,14 +244,15 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
 
     // Short code like "4.23"
     final looksShort = RegExp(r'^\d{1,3}\.\d{1,3}$').hasMatch(host);
+    String originalHost = "";
     String altHost = "";
     if (looksShort) {
-      host = "192.168.$host";
+      originalHost = "192.168.$host";
       altHost = "10.100.$host";
     }
 
     port ??= "5003";
-    return ["$host:$port", "$altHost:$port"];
+    return ["$originalHost:$port", "$altHost:$port"];
   }
 
   Future<void> _connect() async {
@@ -248,6 +274,8 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
       _connecting = true;
       _error = null;
     });
+
+    print("Host types: ${host[0]}, ${host[1]}");
 
     try {
       final uri = Uri.parse("http://${host[0]}/connect");
@@ -279,11 +307,28 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
         }
 
         setState(
-          () => _error = "Failed (${resp.statusCode}). Check code and Wi‑Fi.",
+          () =>
+              _error = "Failed (${altResp.statusCode}). Check code and Wi-Fi.",
         );
       }
     } catch (e) {
-      setState(() => _error = "Could not reach desktop. Ensure same Wi‑Fi.");
+      print("Original attempt failed, trying alt host: $e");
+      final altUri = Uri.parse("http://${host[1]}/connect");
+      final altResp = await http.post(
+        altUri,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"code": code}),
+      );
+      if (altResp.statusCode == 200) {
+        if (!mounted) return;
+        Navigator.of(context).pop(true); // success; parent marks connected
+        return;
+      }
+
+      setState(
+        () => _error = "Failed (${altResp.statusCode}). Check code and Wi-Fi.",
+      );
+      setState(() => _error = "Could not reach desktop. Ensure same Wi-Fi. $e");
     } finally {
       if (mounted) setState(() => _connecting = false);
     }

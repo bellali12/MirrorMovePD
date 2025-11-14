@@ -8,6 +8,7 @@ import cv2
 import threading
 import time
 import os
+import simpleaudio as sa
 
 """
 ISSUES:
@@ -30,6 +31,8 @@ FPS = 30
 VIDEO_WIDTH = 480
 VIDEO_HEIGHT = 640
 APP_BG_COLOR = "#d9d9d9"
+
+SOUND_FILE_PATH = "audio/birds_chirping.wav"
 
 # Allow overriding the Flask port (useful if it is taken by something else)
 SERVER_PORT = int(os.environ.get("MIRRORMOTION_PORT", "5003"))
@@ -57,6 +60,13 @@ def disconnect():
     global is_connected
     is_connected = False
     return jsonify({"connected": False}), 200
+
+
+@flask_app.route('/command', methods=['POST'])
+def command():
+    data = request.json
+    print("Received command:", data)
+    return jsonify({"status": "ok"}), 200
 
 
 def run_flask(host: str = "0.0.0.0", port: int = SERVER_PORT):
@@ -111,6 +121,51 @@ def button_callback():
     print("button clicked")
 
 
+class SoundPlayer:
+    def __init__(self, path: str):
+        self.path = path
+        self._wave_obj = None
+        self._play_obj = None
+        self._should_play = False
+        self._running = True
+
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def _loop(self):
+        while self._running:
+            if self._should_play:
+                if (self._play_obj is None) or (not self._play_obj.is_playing()):
+                    try:
+                        if self._wave_obj is None:
+                            self._wave_obj = sa.WaveObject.from_wave_file(
+                                self.path)
+
+                        self._play_obj = self._wave_obj.play()
+                    except Exception:
+                        print("Error playing sound")
+                        time.sleep(0.1)
+                time.sleep(0.1)
+            else:
+                if self._play_obj is not None and self._play_obj.is_playing():
+                    self._play_obj.stop()
+                    self._play_obj = None
+                time.sleep(0.1)
+
+    def start(self):
+        self._should_play = True
+
+    def stop(self):
+        self._should_play = False
+        if self._play_obj is not None and self._play_obj.is_playing():
+            self._play_obj.stop()
+            self._play_obj = None
+
+    def close(self):
+        self._running - False
+        self.stop()
+
+
 class VideoPanel(ctk.CTkFrame):
     def __init__(self, parent, source):
         super().__init__(parent)
@@ -134,6 +189,7 @@ class VideoPanel(ctk.CTkFrame):
 
         # Worker thread state
         self._running = True
+        self._paused = True
         # store RGB frame (UI only creates PhotoImage)
         self._latest_rgb = None
         self._latest_ver = 0         # increment when a new frame arrives
@@ -153,9 +209,17 @@ class VideoPanel(ctk.CTkFrame):
             target=self._reader_loop, daemon=True)
         self._reader_thread.start()
 
+    def set_paused(self, paused: bool):
+        self._paused = paused
+
     def _reader_loop(self):
         next_t = time.monotonic()
         while self._running:
+
+            if self._paused:
+                time.sleep(0.05)
+                continue
+
             ret, frame = self.cap.read()
             if not ret:
                 # If file ended or temporary hiccup, don't spin
@@ -230,6 +294,8 @@ class App(ctk.CTk):
         self._toast_window = None
         self._toast_bind_id = None
 
+        self.sound_player = SoundPlayer(SOUND_FILE_PATH)
+
         content = ctk.CTkFrame(self, fg_color=APP_BG_COLOR)
         content.pack(padx=20, pady=20, fill="both", expand=True)
 
@@ -239,6 +305,8 @@ class App(ctk.CTk):
 
         self.left_panel = VideoPanel(content, REFERENCE_VIDEO_PATH)
         self.right_panel = VideoPanel(content, USER_CAMERA_INDEX)
+        # Webcam view is never paused
+        self.right_panel.set_paused(False)
 
         self.left_panel.grid(
             row=0, column=0, sticky="nsew", padx=(8, 4), pady=8)
@@ -246,6 +314,8 @@ class App(ctk.CTk):
             row=0, column=1, sticky="nsew", padx=(4, 8), pady=8)
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+        self.left_panel.set_paused(True)
 
         # UI Loop
         self._delay = int(1000 / FPS)
@@ -398,11 +468,15 @@ class App(ctk.CTk):
     def _update_connection_toast(self):
         if not is_connected:
             self._ensure_ip_toast()
+            self.left_panel.set_paused(True)
+            self.sound_player.stop()
             if not self._popup_shown_this_session:
                 self._show_ip_popup()
 
         else:
             self._hide_ip_toast()
+            self.left_panel.set_paused(False)
+            self.sound_player.start()
             self._popup_shown_this_session = True
         self.after(500, self._update_connection_toast)
     # ----- end toast -----
@@ -420,6 +494,7 @@ class App(ctk.CTk):
         self._updating = False
         self.left_panel.release()
         self.right_panel.release()
+        self.sound_player.close()
         self._hide_ip_toast()
         self.destroy()
 

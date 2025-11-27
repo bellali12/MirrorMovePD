@@ -41,6 +41,7 @@ dependencies:
   firebase_auth: ^6.0.0
   cloud_firestore: ^6.0.0
   http: ^1.5.0
+  audio_visualizer: ^1.1.0
 
 dev_dependencies:
   flutter_test:

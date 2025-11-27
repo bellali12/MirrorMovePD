@@ -1,10 +1,14 @@
 import 'dart:convert';
+import 'package:audio_visualizer/visualizers/multi_wave_visualizer.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 // import 'package:chewie/chewie.dart';
 import 'package:flutter/services.dart';
 // import 'package:video_player/video_player.dart';
 import 'package:http/http.dart' as http;
 import 'package:mirrormotion/size_config.dart';
+import 'package:audio_visualizer/audio_visualizer.dart';
+import 'package:mirrormotion/services/data.dart';
 
 /*
   Instructor video on top and view of the user on bottom.
@@ -64,6 +68,16 @@ class SessionScreen extends StatefulWidget {
 
 class _SessionScreenState extends State<SessionScreen> {
   bool isConnected = false;
+  double _currentSliderValue = 0.0;
+  String? _sliderStatus;
+  VisualizerPlayer? audioPlayer;
+
+  DataService dataService = DataService();
+
+  Future<void> setupAudioVisualizer() async {
+    audioPlayer = VisualizerPlayer();
+    await audioPlayer!.initialize();
+  }
 
   @override
   void initState() {
@@ -90,26 +104,135 @@ class _SessionScreenState extends State<SessionScreen> {
     return Scaffold(
       appBar: AppBar(
         actions: [
-          IconButton(icon: const Icon(Icons.settings), onPressed: () {}),
+          IconButton(icon: const Icon(Icons.palette_rounded), onPressed: () {}),
         ],
       ),
       body: SafeArea(
         child: Center(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              IconButton(
-                iconSize: 150,
-                onPressed: () {},
-                icon: const Icon(
-                  Icons.play_circle_fill_rounded,
-                  color: Color(0xFF8B7D7D),
-                  size: 100,
+              SizedBox(
+                width: SizeConfig.horizontal! * 80,
+                height: SizeConfig.vertical! * 15,
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (audioPlayer != null)
+                          ListenableBuilder(
+                            listenable: audioPlayer!,
+                            builder: (context, child) {
+                              return MultiWaveVisualizer(
+                                input: audioPlayer!.value.waveform,
+                                backgroundColor: Colors.black,
+                                color: Colors.greenAccent,
+                                gap: 2,
+                              );
+                            },
+                          ),
+                        Text(
+                          "Song Name - Artist Name",
+                          style: TextStyle(
+                            fontSize: SizeConfig.horizontal! * 5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
+              ),
+              Expanded(child: Container()),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    iconSize: 150,
+                    onPressed: () {},
+                    icon: const Icon(
+                      Icons.fast_rewind_rounded,
+                      color: Color(0xFF8B7D7D),
+                      size: 100,
+                    ),
+                  ),
+                  IconButton(
+                    iconSize: 150,
+                    onPressed: () {},
+                    icon: const Icon(
+                      Icons.play_circle_fill_rounded,
+                      color: Color(0xFF8B7D7D),
+                      size: 100,
+                    ),
+                  ),
+                  IconButton(
+                    iconSize: 150,
+                    onPressed: () {},
+                    icon: const Icon(
+                      Icons.fast_forward_rounded,
+                      color: Color(0xFF8B7D7D),
+                      size: 100,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 20),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.volume_down_rounded,
+                    color: Color.fromARGB(255, 139, 129, 129),
+                  ),
+                  SizedBox(
+                    width: SizeConfig.horizontal! * 65,
+                    child: CupertinoSlider(
+                      key: const Key('slider'),
+                      value: _currentSliderValue,
+                      // This allows the slider to jump between divisions.
+                      // If null, the slide movement is continuous.
+                      // divisions: 5,
+                      // The maximum slider value
+                      max: 100,
+                      activeColor: Color.fromARGB(255, 139, 129, 129),
+                      thumbColor: Color.fromARGB(255, 139, 129, 129),
+                      // This is called when sliding is started.
+                      onChangeStart: (double value) {
+                        setState(() {
+                          _sliderStatus = 'Sliding';
+                        });
+                      },
+                      // This is called when sliding has ended.
+                      onChangeEnd: (double value) {
+                        setState(() {
+                          _sliderStatus = 'Finished sliding';
+                        });
+                      },
+                      // This is called when slider value is changed.
+                      onChanged: (double value) {
+                        setState(() {
+                          _currentSliderValue = value;
+                        });
+                      },
+                    ),
+                  ),
+                  Icon(
+                    Icons.volume_up_rounded,
+                    color: Color.fromARGB(255, 139, 129, 129),
+                  ),
+                ],
+              ),
+              GridView(
+                // mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                shrinkWrap: true,
+                padding: const EdgeInsets.all(80),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 20,
+                  crossAxisSpacing: 20,
+                ),
                 children: [
                   DifficultyButton(
                     level: 1,
@@ -129,6 +252,22 @@ class _SessionScreenState extends State<SessionScreen> {
                   ),
                   DifficultyButton(
                     level: 5,
+                    color: const Color.fromARGB(255, 67, 77, 79),
+                  ),
+                  DifficultyButton(
+                    level: 6,
+                    color: const Color.fromARGB(255, 67, 77, 79),
+                  ),
+                  DifficultyButton(
+                    level: 7,
+                    color: const Color.fromARGB(255, 67, 77, 79),
+                  ),
+                  DifficultyButton(
+                    level: 8,
+                    color: const Color.fromARGB(255, 67, 77, 79),
+                  ),
+                  DifficultyButton(
+                    level: 9,
                     color: const Color.fromARGB(255, 67, 77, 79),
                   ),
                 ],
@@ -214,6 +353,8 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
   bool _connecting = false;
   String? _error;
 
+  DataService dataService = DataService();
+
   // Converts a "connection code" to host:port.
   // Desktop shows Connection Code derived from IP with "192.168." removed.
   // Examples:
@@ -290,6 +431,7 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
       if (resp.statusCode == 200) {
         if (!mounted) return;
         Navigator.of(context).pop(true); // success; parent marks connected
+        dataService.desktopAppUrl = "http://${host[0]}";
       } else {
         // Attempt the altHost
         final altUri = Uri.parse("http://${host[1]}/connect");
@@ -303,6 +445,7 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
         if (altResp.statusCode == 200) {
           if (!mounted) return;
           Navigator.of(context).pop(true); // success; parent marks connected
+          dataService.desktopAppUrl = "http://${host[1]}";
           return;
         }
 
@@ -322,6 +465,7 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
       if (altResp.statusCode == 200) {
         if (!mounted) return;
         Navigator.of(context).pop(true); // success; parent marks connected
+        dataService.desktopAppUrl = "http://${host[1]}";
         return;
       }
 

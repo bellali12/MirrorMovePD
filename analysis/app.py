@@ -9,11 +9,15 @@ import threading
 import time
 import os
 import simpleaudio as sa
+import queue
 
 """
 ISSUES:
 - merge old toast with new popup
+- embed the connection popup into the main window
 """
+
+command_queue = queue.Queue()
 
 # Reduce OpenCV internal thread usage (prevents file decode from hogging CPU)
 # Tune this if your CPU has more cores; 2 often works well on macOS without starving other threads.
@@ -64,8 +68,25 @@ def disconnect():
 
 @flask_app.route('/command', methods=['POST'])
 def command():
+    # assuming body: jsonEncode({'command': command}),
     data = request.json
-    print("Received command:", data)
+    print("Received Raw Data:", data)
+    command = data.get("command", "")
+    print("Received command:", command)
+
+    command_queue.put(command)
+
+    # if command == "play_session":
+    #     pass
+    # elif command == "prev_session":
+    #     pass
+    # elif command == "next_session":
+    #     pass
+    # elif command.startswith("set_volume:"):
+    #     volume = float(command.split(":")[1])
+    # elif command.startswith("change_difficulty:"):
+    #     level = int(command.split(":")[1])
+
     return jsonify({"status": "ok"}), 200
 
 
@@ -290,6 +311,11 @@ class App(ctk.CTk):
         # self.app_connected = False
         self._popup_shown_this_session = False
 
+        # Session Variables
+        self._difficulty = 1
+        self._volume = 40
+        self.after(250, self._poll_commands)
+
         # Toast state
         self._toast_window = None
         self._toast_bind_id = None
@@ -324,6 +350,32 @@ class App(ctk.CTk):
 
         # Start checking connection to control the toast
         self.after(200, self._update_connection_toast)
+
+    def _poll_commands(self):
+        while True:
+            try:
+                command = command_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            self._handle_command(command)
+
+        self.after(250, self._poll_commands)
+
+    def _handle_command(self, command: str):
+        if command == "play_session":
+            pass
+        elif command == "prev_session":
+            pass
+        elif command == "next_session":
+            pass
+        elif command.startswith("set_volume:"):
+            volume = float(command.split(":")[1])
+            self._volume = volume
+        # for now assum difficulty determines pose tolerance
+        elif command.startswith("change_difficulty:"):
+            level = int(command.split(":")[1])
+            self._difficulty = level
 
     def _position_generic_toast(self, win, y_offset=20):
         if not win or not win.winfo_exists():

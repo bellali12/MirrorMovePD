@@ -79,6 +79,24 @@ class _SessionScreenState extends State<SessionScreen> {
     await audioPlayer!.initialize();
   }
 
+  Future<void> sendCommandToDesktop(String command) async {
+    final url = Uri.parse('${dataService.desktopAppUrl}/command');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'command': command}),
+      );
+      if (response.statusCode == 200) {
+        print('Command sent successfully: $command');
+      } else {
+        print('Failed to send command. Status code: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error sending command: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -151,7 +169,9 @@ class _SessionScreenState extends State<SessionScreen> {
                 children: [
                   IconButton(
                     iconSize: 150,
-                    onPressed: () {},
+                    onPressed: () {
+                      sendCommandToDesktop("prev_session");
+                    },
                     icon: const Icon(
                       Icons.fast_rewind_rounded,
                       color: Color(0xFF8B7D7D),
@@ -160,16 +180,20 @@ class _SessionScreenState extends State<SessionScreen> {
                   ),
                   IconButton(
                     iconSize: 150,
-                    onPressed: () {},
+                    onPressed: () {
+                      sendCommandToDesktop("play_session");
+                    },
                     icon: const Icon(
-                      Icons.play_circle_fill_rounded,
+                      Icons.play_circle_fill_rounded, // TODO toggle icon
                       color: Color(0xFF8B7D7D),
                       size: 100,
                     ),
                   ),
                   IconButton(
                     iconSize: 150,
-                    onPressed: () {},
+                    onPressed: () {
+                      sendCommandToDesktop("next_session");
+                    },
                     icon: const Icon(
                       Icons.fast_forward_rounded,
                       color: Color(0xFF8B7D7D),
@@ -208,6 +232,7 @@ class _SessionScreenState extends State<SessionScreen> {
                       onChangeEnd: (double value) {
                         setState(() {
                           _sliderStatus = 'Finished sliding';
+                          sendCommandToDesktop("set_volume:$value");
                         });
                       },
                       // This is called when slider value is changed.
@@ -314,6 +339,25 @@ class DifficultyButton extends StatefulWidget {
 }
 
 class _DifficultyButtonState extends State<DifficultyButton> {
+  DataService dataService = DataService();
+  Future<void> sendCommandToDesktop(String command) async {
+    final url = Uri.parse('${dataService.desktopAppUrl}/command');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'command': command}),
+      );
+      if (response.statusCode == 200) {
+        print('Command sent successfully: $command');
+      } else {
+        print('Failed to send command. Status code: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error sending command: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -328,6 +372,7 @@ class _DifficultyButtonState extends State<DifficultyButton> {
         onPressed: () {
           HapticFeedback.mediumImpact();
           // send out a signal for the companion desktop app
+          sendCommandToDesktop("change_difficulty:${widget.level}");
         },
         child: Text(
           widget.level.toString(),

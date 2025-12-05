@@ -316,6 +316,9 @@ class App(ctk.CTk):
         self._volume = 40
         self.after(250, self._poll_commands)
 
+        self._sessions = []
+        self._session_index = 0
+
         # Toast state
         self._toast_window = None
         self._toast_bind_id = None
@@ -343,6 +346,27 @@ class App(ctk.CTk):
 
         self.left_panel.set_paused(True)
 
+        # Embedded Connection Bar at Bottom Center
+        self.connection_bar = ctk.CTkFrame(
+            self, fg_color="#4F4451", corner_radius=12)
+        self.connection_bar.grid_columnconfigure(0, weight=1)
+
+        self.connection_label = ctk.CTkLabel(
+            self.connection_bar,
+            text="Not Connected",
+            text_color="white",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        )
+        self.connection_label.grid(row=0, column=0, padx=(14, 10), pady=10)
+        self.connection_close_btn = ctk.CTkButton(
+            self.connection_bar, text="✕", width=28, height=28, corner_radius=14,
+            fg_color="#444444", hover_color="#555555",
+            command=self._hide_ip_toast
+        )
+        self.connection_close_btn.grid(row=0, column=1, padx=10, pady=8)
+
+        self.connection_bar.pack(side="bottom", fill="x")
+
         # UI Loop
         self._delay = int(1000 / FPS)
         self._updating = True
@@ -350,6 +374,18 @@ class App(ctk.CTk):
 
         # Start checking connection to control the toast
         self.after(200, self._update_connection_toast)
+        self.after(100, self._bring_to_front)
+
+    def _bring_to_front(self):
+        try:
+            self.update_idletasks()
+            self.lift()
+            self.focus_force()
+
+            self.attributes('-topmost', True)
+            self.after(200, lambda: self.attributes('-topmost', False))
+        except Exception as e:
+            print("Error bringing window to front:", e)
 
     def _poll_commands(self):
         while True:
@@ -363,8 +399,15 @@ class App(ctk.CTk):
         self.after(250, self._poll_commands)
 
     def _handle_command(self, command: str):
+        print("Handling command:", command)
+
         if command == "play_session":
-            pass
+            if self.left_panel._paused:
+                self.left_panel.set_paused(False)
+                self.sound_player.start()
+            else:
+                self.left_panel.set_paused(True)
+                self.sound_player.stop()
         elif command == "prev_session":
             pass
         elif command == "next_session":
@@ -372,68 +415,29 @@ class App(ctk.CTk):
         elif command.startswith("set_volume:"):
             volume = float(command.split(":")[1])
             self._volume = volume
+            print("Set volume to:", volume)
         # for now assum difficulty determines pose tolerance
         elif command.startswith("change_difficulty:"):
             level = int(command.split(":")[1])
             self._difficulty = level
+            print("Set difficulty to:", level)
 
-    def _position_generic_toast(self, win, y_offset=20):
-        if not win or not win.winfo_exists():
-            return
-        self.update_idletasks()
-        tw, th = win.winfo_width(), win.winfo_height()
-        rw, rh = self.winfo_width(), self.winfo_height()
-        rx, ry = self.winfo_rootx(), self.winfo_rooty()
-        x = rx + (rw - tw) // 2
-        y = ry + rh - th - y_offset
-        win.geometry(f"+{x}+{y}")
+    def _switch_session(self, index: int):
+        pass  # assume countdown upon new session
 
     def _show_ip_popup(self):
+        """Show a one-time, clearer message in the embedded connection bar."""
         lan_ip = get_lan_ip()
-
         code = self.ip_to_connection_code(lan_ip)
 
-        connection_toast = ctk.CTkToplevel(self, fg_color="#2b2b2b")
-        connection_toast.overrideredirect(True)  # No title bar
-        connection_toast.attributes("-topmost", True)
-
-        container = ctk.CTkFrame(
-            connection_toast, fg_color="#2b2b2b", corner_radius=12)
-        container.pack(fill="both", expand=True)
-
-        label = ctk.CTkLabel(
-            container,
-            text=f"Connection code: {code}",
-            text_color="white",
-            font=ctk.CTkFont(size=16, weight="bold"),
+        self.connection_label.configure(
+            text=f"Connect your mobile app using code: {code}"
         )
-        label.pack(side="left", padx=(14, 10), pady=10)
 
-        connection_toast.update_idletasks()
-        desired_w = max(300, connection_toast.winfo_width())
-        desired_h = connection_toast.winfo_height()
-        connection_toast.geometry(f"{desired_w}x{desired_h}")
-        self._position_generic_toast(connection_toast, y_offset=24)
+        if not self.connection_bar.winfo_manager():
+            self.connection_bar.pack(side="bottom", fill="x")
 
-        # self._toast = connection_toast
-
-        # popup.title("Connection Info")
-        # popup.geometry("300x150")
-        # popup.configure(bg=APP_BG_COLOR)
-
-        # label = ctk.CTkLabel(
-        #     popup, text=f"Connect your mobile app to:\nIP Address: {lan_ip}\nPort: {SERVER_PORT}", bg_color=APP_BG_COLOR)
-        # label.pack(pady=20, padx=20)
-
-        # button = ctk.CTkButton(
-        #     popup, text="OK", command=popup.destroy)
-        # button.pack(pady=10)
-
-        # self.app_connected = True
         self._popup_shown_this_session = True
-
-        # if not hasattr((self, "_toast_bind_id")):
-        #     pass
 
     # ----- Persistent bottom-center IP toast while not connected -----
     def ip_to_connection_code(self, ip: str) -> str:
@@ -446,76 +450,21 @@ class App(ctk.CTk):
             return ip
 
     def _ensure_ip_toast(self):
-        if self._toast_window and self._toast_window.winfo_exists():
-            self._position_toast()
-            return
 
         ip = get_lan_ip()
-        # Convert IP to connection code
         connection_code = self.ip_to_connection_code(ip)
-        tw = ctk.CTkToplevel(self, fg_color="#2b2b2b")
-        tw.overrideredirect(True)
-        tw.attributes("-topmost", True)
 
-        container = ctk.CTkFrame(tw, fg_color="#2b2b2b", corner_radius=12)
-        container.pack(fill="both", expand=True)
-
-        label = ctk.CTkLabel(
-            container,
-            text=f"Connection Code: {connection_code}",
-            text_color="white",
-            font=ctk.CTkFont(size=14, weight="bold"),
+        self.connection_label.configure(
+            text=f"Connection Code: {connection_code}"
         )
-        label.pack(side="left", padx=(14, 10), pady=10)
 
-        close_btn = ctk.CTkButton(
-            container, text="✕", width=28, height=28, corner_radius=14,
-            fg_color="#444444", hover_color="#555555",
-            command=self._hide_ip_toast
-        )
-        close_btn.pack(side="right", padx=10, pady=8)
-
-        self._toast_window = tw
-        self._toast_window.update_idletasks()
-        desired_w = max(280, self._toast_window.winfo_width())
-        desired_h = self._toast_window.winfo_height()
-        self._toast_window.geometry(f"{desired_w}x{desired_h}")
-        self._position_toast()
-
-        if not self._toast_bind_id:
-            self._toast_bind_id = self.bind(
-                "<Configure>", self._on_window_configure)
+        if not self.connection_bar.winfo_ismapped():
+            self.connection_bar.pack(side="bottom", fill="x")
+            self.update_idletasks()
 
     def _hide_ip_toast(self):
-        if self._toast_window and self._toast_window.winfo_exists():
-            try:
-                self._toast_window.destroy()
-            except Exception:
-                pass
-        self._toast_window = None
-        if self._toast_bind_id:
-            try:
-                self.unbind("<Configure>", self._toast_bind_id)
-            except Exception:
-                pass
-            self._toast_bind_id = None
-
-    def _position_toast(self):
-        if not self._toast_window or not self._toast_window.winfo_exists():
-            return
-        self.update_idletasks()
-        tw = self._toast_window.winfo_width()
-        th = self._toast_window.winfo_height()
-        rw = self.winfo_width()
-        rh = self.winfo_height()
-        rx = self.winfo_rootx()
-        ry = self.winfo_rooty()
-        x = rx + (rw - tw) // 2
-        y = ry + rh - th - 20
-        self._toast_window.geometry(f"+{x}+{y}")
-
-    def _on_window_configure(self, _event=None):
-        self._position_toast()
+        if self.connection_bar and self.connection_bar.winfo_manager():
+            self.connection_bar.pack_forget()
 
     def _update_connection_toast(self):
         if not is_connected:
@@ -560,5 +509,5 @@ if __name__ == "__main__":
 
     app = App()
     app.geometry(f"{2*VIDEO_WIDTH + 80}x{VIDEO_HEIGHT + 80}")
-    app.minsize(VIDEO_WIDTH*2 + 80, VIDEO_HEIGHT + 80)
+    app.minsize(VIDEO_WIDTH*2 + 80, VIDEO_HEIGHT + 80 + 40)
     app.mainloop()

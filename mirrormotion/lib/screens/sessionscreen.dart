@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:audio_visualizer/visualizers/multi_wave_visualizer.dart';
 import 'package:flutter/cupertino.dart';
@@ -97,6 +98,23 @@ class _SessionScreenState extends State<SessionScreen> {
     }
   }
 
+  Future<bool> checkConnection() async {
+    final url = Uri.parse('${dataService.desktopAppUrl}/status');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        print('Connection is active');
+        return true;
+      } else {
+        print('Connection inactive. Status code: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      // print('Error checking connection: $e');
+      return false;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -115,6 +133,16 @@ class _SessionScreenState extends State<SessionScreen> {
         }
       });
     }
+
+    // Setup periodic connection check
+    Timer.periodic(const Duration(milliseconds: 500), (timer) async {
+      final connected = await checkConnection();
+      if (mounted) {
+        setState(() {
+          isConnected = connected;
+        });
+      }
+    });
   }
 
   @override

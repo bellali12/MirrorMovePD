@@ -10,6 +10,7 @@ import time
 import os
 import simpleaudio as sa
 import queue
+import random
 
 """
 ISSUES:
@@ -316,8 +317,9 @@ class App(ctk.CTk):
         self._volume = 40
         self.after(250, self._poll_commands)
 
-        self._sessions = []
+        self._sessions = ['videos/IMG_8404.mp4', 'videos/IMG_8407.mp4']
         self._session_index = 0
+        self._master_sessions = ['videos/IMG_8404.mp4', 'videos/IMG_8407.mp4']
 
         # Toast state
         self._toast_window = None
@@ -409,9 +411,11 @@ class App(ctk.CTk):
                 self.left_panel.set_paused(True)
                 self.sound_player.stop()
         elif command == "prev_session":
-            pass
+            self._session_index -= 1
+            self._switch_session(self._session_index)
         elif command == "next_session":
-            pass
+            self._session_index += 1
+            self._switch_session(self._session_index)
         elif command.startswith("set_volume:"):
             volume = float(command.split(":")[1])
             self._volume = volume
@@ -423,7 +427,31 @@ class App(ctk.CTk):
             print("Set difficulty to:", level)
 
     def _switch_session(self, index: int):
-        pass  # assume countdown upon new session
+        pass  # TODO: assume countdown upon new session
+
+        if not self._sessions:
+            return
+
+        # If overflow to higher levels, regenerate new sequence
+        # If overflow to previous levels, stops working
+        if index < 0:
+            return
+        if index == len(self._sessions):
+            chosen_session = random.choice(self._master_sessions)
+            self._sessions.append(chosen_session)
+
+        new_path = self._sessions[index]
+        print('Switching to session')
+
+        session_parent = self.left_panel.master
+        self.left_panel.release()
+        self.left_panel.destroy()
+
+        self.left_panel = VideoPanel(session_parent, new_path)
+        self.left_panel.grid(
+            row=0, column=0, sticky='nsew', padx=(8, 4), pady=8)
+        self.left_panel.set_paused(True)
+        self.sound_player.stop()
 
     def _show_ip_popup(self):
         """Show a one-time, clearer message in the embedded connection bar."""

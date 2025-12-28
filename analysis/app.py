@@ -30,7 +30,7 @@ except Exception:
     pass
 
 # ----- CONFIG -----
-REFERENCE_VIDEO_PATH = "videos/IMG_8404.mp4"
+REFERENCE_VIDEO_PATH = "videos/Birds_Li.mp4"
 USER_CAMERA_INDEX = 0
 FPS = 30
 VIDEO_WIDTH = 480
@@ -317,9 +317,11 @@ class App(ctk.CTk):
         self._volume = 40
         self.after(250, self._poll_commands)
 
-        self._sessions = ['videos/IMG_8404.mp4', 'videos/IMG_8407.mp4']
+        self._sessions = ['videos/Birds_Li.mp4',
+                          'videos/Dance of the Sugar Plum Fairy_Tchaikovsky.mp4', 'videos/Rainbows_Bella.mp4']
         self._session_index = 0
-        self._master_sessions = ['videos/IMG_8404.mp4', 'videos/IMG_8407.mp4']
+        self._master_sessions = [
+            'videos/Birds_Li.mp4', 'videos/Dance of the Sugar Plum Fairy_Tchaikovsky.mp4', 'videos/Rainbows_Bella.mp4']
 
         # Toast state
         self._toast_window = None

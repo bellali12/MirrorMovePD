@@ -157,9 +157,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
                 // video thumbnail
-                SizedBox(
+                Container(
                   // width: SizeConfig.horizontal! * 90,
-                  height: SizeConfig.vertical! * 30,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.all(Radius.circular(12)),
+                    color: const Color.fromARGB(255, 169, 189, 195),
+                  ),
+                  height: SizeConfig.vertical! * 10,
                   child: InkWell(
                     onTap: () {
                       // open the session screen with the specified video
@@ -172,13 +176,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                     child: Stack(
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Image.asset(
-                            todayThumbnailPath,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
+                        // ClipRRect(
+                        //   borderRadius: BorderRadius.circular(20),
+                        //   child: Image.asset(
+                        //     todayThumbnailPath,
+                        //     fit: BoxFit.cover,
+                        //   ),
+                        // ),
                         Center(
                           child: Icon(
                             Icons.play_circle_fill,
@@ -192,6 +196,47 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  height: SizeConfig.vertical! * 30,
+                  width:
+                      SizeConfig.horizontal! *
+                      100, //TODO: Fix horizontal padding
+                  child: Card(
+                    color: const Color.fromARGB(
+                      255,
+                      255,
+                      213,
+                      213,
+                    ).withValues(alpha: 0.9),
+                    child: Padding(
+                      padding: EdgeInsets.all(10),
+                      child: Column(
+                        children: [
+                          Text("Pick a song to dance to"),
+                          ListView(
+                            shrinkWrap: true,
+                            children: [
+                              Card(
+                                child: Column(
+                                  children: [
+                                    Text("Rainbow"),
+                                    Row(
+                                      children: [
+                                        Text("Li"),
+                                        Text("10:00"),
+                                        Text("5"),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

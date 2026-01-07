@@ -15,6 +15,22 @@ class _HomeScreenState extends State<HomeScreen> {
   String todayVideoPath = "assets/IMG_7837.MOV";
   String todayThumbnailPath = "assets/IMG_8248.jpg";
 
+  List<Map<String, dynamic>> availableSongs = [
+    {'title': 'Rainbow', 'artist': 'Bella Li', 'level': 5, 'duration': '10:00'},
+    {
+      'title': 'Sunshine',
+      'artist': 'John Doe',
+      'level': 3,
+      'duration': '08:30',
+    },
+    {
+      'title': 'Starlight',
+      'artist': 'Jane Smith',
+      'level': 4,
+      'duration': '09:15',
+    },
+  ];
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -216,24 +232,61 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Column(
                         children: [
                           Text("Pick a song to dance to"),
-                          ListView(
+                          ListView.builder(
                             shrinkWrap: true,
-                            children: [
-                              Card(
-                                child: Column(
-                                  children: [
-                                    Text("Rainbow"),
-                                    Row(
+                            itemCount: availableSongs.length,
+                            itemBuilder: (context, index) {
+                              return Card(
+                                child: InkWell(
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => SessionScreen(
+                                          initialSongData:
+                                              availableSongs[index],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Column(
                                       children: [
-                                        Text("Li"),
-                                        Text("10:00"),
-                                        Text("5"),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              availableSongs[index]['title'],
+                                              textAlign: TextAlign.left,
+                                              style: GoogleFonts.poppins(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            Text(
+                                              "Level: ${availableSongs[index]['level']}",
+                                            ),
+                                          ],
+                                        ),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              "${availableSongs[index]['artist']}",
+                                            ),
+                                            Text(
+                                              "Duration: ${availableSongs[index]['duration']}",
+                                            ),
+                                          ],
+                                        ),
                                       ],
                                     ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              );
+                            },
                           ),
                         ],
                       ),

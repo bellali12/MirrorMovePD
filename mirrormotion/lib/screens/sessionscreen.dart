@@ -61,7 +61,9 @@ import 'package:mirrormotion/services/data.dart';
 // TODO: poll the server periodically to check connection status
 
 class SessionScreen extends StatefulWidget {
-  const SessionScreen({super.key});
+  const SessionScreen({super.key, this.initialSongData});
+
+  final Map<String, dynamic>? initialSongData;
 
   @override
   State<SessionScreen> createState() => _SessionScreenState();

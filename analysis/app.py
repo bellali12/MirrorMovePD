@@ -67,6 +67,26 @@ def disconnect():
     return jsonify({"connected": False}), 200
 
 
+@flask_app.route('/song_data', methods=['POST'])
+def song_data():
+    data = request.json
+    print(f"Received song data: {data}")
+
+    # Get all the filenames in the 'videos' directory
+    video_filenames = os.listdir('videos')
+    print(f"Available video files: {video_filenames}")
+
+    target_name = data.get("title", "")
+
+    for filename in video_filenames:
+        # Strip off the extension
+        name_without_ext = os.path.splitext(filename)[0]
+        if name_without_ext.lower() == target_name.lower():
+            print(f"Matched video file: {filename}")
+
+    return jsonify({"status": "received"}), 200
+
+
 @flask_app.route('/command', methods=['POST'])
 def command():
     # assuming body: jsonEncode({'command': command}),

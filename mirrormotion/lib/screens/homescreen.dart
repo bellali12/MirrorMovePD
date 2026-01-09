@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mirrormotion/components/chart.dart';
 import 'package:mirrormotion/size_config.dart';
 import 'package:mirrormotion/screens/sessionscreen.dart';
+import 'package:mirrormotion/services/data.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,6 +15,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   String todayVideoPath = "assets/IMG_7837.MOV";
   String todayThumbnailPath = "assets/IMG_8248.jpg";
+  DataService dataService = DataService();
 
   List<Map<String, dynamic>> availableSongs = [
     {'title': 'Rainbow', 'artist': 'Bella Li', 'level': 5, 'duration': '10:00'},
@@ -30,6 +32,17 @@ class _HomeScreenState extends State<HomeScreen> {
       'duration': '09:15',
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+
+    dataService.getSongs().then(((songs) {
+      setState(() {
+        availableSongs = songs;
+      });
+    }));
+  }
 
   @override
   Widget build(BuildContext context) {

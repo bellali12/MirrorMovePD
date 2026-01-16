@@ -509,8 +509,11 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
 
       if (resp.statusCode == 200) {
         if (!mounted) return;
-        Navigator.of(context).pop(true); // success; parent marks connected
         dataService.desktopAppUrl = "http://${host[0]}";
+        sendInitialSongRequest().then((value) {
+          print("initial request $value");
+          Navigator.of(context).pop(true); // success; parent marks connected
+        });
       } else {
         // Attempt the altHost
         final altUri = Uri.parse("http://${host[1]}/connect");
@@ -523,8 +526,11 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
             .timeout(const Duration(seconds: 5));
         if (altResp.statusCode == 200) {
           if (!mounted) return;
-          Navigator.of(context).pop(true); // success; parent marks connected
           dataService.desktopAppUrl = "http://${host[1]}";
+          sendInitialSongRequest().then((value) {
+            print("initial request $value");
+            Navigator.of(context).pop(true); // success; parent marks connected
+          });
           return;
         }
 
@@ -543,8 +549,12 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
       );
       if (altResp.statusCode == 200) {
         if (!mounted) return;
-        Navigator.of(context).pop(true); // success; parent marks connected
+
         dataService.desktopAppUrl = "http://${host[1]}";
+        sendInitialSongRequest().then((value) {
+          print("initial request $value");
+          Navigator.of(context).pop(true); // success; parent marks connected
+        });
         return;
       }
 

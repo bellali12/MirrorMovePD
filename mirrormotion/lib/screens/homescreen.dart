@@ -245,61 +245,63 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Column(
                         children: [
                           Text("Pick a song to dance to"),
-                          ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: availableSongs.length,
-                            itemBuilder: (context, index) {
-                              return Card(
-                                child: InkWell(
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => SessionScreen(
-                                          initialSongData:
-                                              availableSongs[index],
+                          Expanded(
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: availableSongs.length,
+                              itemBuilder: (context, index) {
+                                return Card(
+                                  child: InkWell(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => SessionScreen(
+                                            initialSongData:
+                                                availableSongs[index],
+                                          ),
                                         ),
-                                      ),
-                                    );
-                                  },
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(8.0),
-                                    child: Column(
-                                      children: [
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              availableSongs[index]['title'],
-                                              textAlign: TextAlign.left,
-                                              style: GoogleFonts.poppins(
-                                                fontWeight: FontWeight.bold,
+                                      );
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(8.0),
+                                      child: Column(
+                                        children: [
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                availableSongs[index]['title'],
+                                                textAlign: TextAlign.left,
+                                                style: GoogleFonts.poppins(
+                                                  fontWeight: FontWeight.bold,
+                                                ),
                                               ),
-                                            ),
-                                            Text(
-                                              "Level: ${availableSongs[index]['level']}",
-                                            ),
-                                          ],
-                                        ),
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              "${availableSongs[index]['artist']}",
-                                            ),
-                                            Text(
-                                              "Duration: ${availableSongs[index]['duration']}",
-                                            ),
-                                          ],
-                                        ),
-                                      ],
+                                              Text(
+                                                "Level: ${availableSongs[index]['level']}",
+                                              ),
+                                            ],
+                                          ),
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                "${availableSongs[index]['artist']}",
+                                              ),
+                                              Text(
+                                                "Duration: ${availableSongs[index]['duration']}",
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                              );
-                            },
+                                );
+                              },
+                            ),
                           ),
                         ],
                       ),

@@ -30,7 +30,15 @@ except Exception:
     pass
 
 # ----- CONFIG -----
-REFERENCE_VIDEO_PATH = "videos/Birds_Li.mp4"
+REFERENCE_VIDEO_PATH = "videos/Every Breath You Take.mp4"
+SONG_TO_INDEX = {
+    "Every Breath You Take": 0,
+    "All That Jazz": 1,
+    "Dance of the Sugar Plum Fairy": 2,
+    "New York, New York": 3
+}
+
+
 USER_CAMERA_INDEX = 0
 FPS = 30
 VIDEO_WIDTH = 480
@@ -83,6 +91,7 @@ def song_data():
         name_without_ext = os.path.splitext(filename)[0]
         if name_without_ext.lower() == target_name.lower():
             print(f"Matched video file: {filename}")
+            command_queue.put(f"start_new_session:{filename[:-4]}")
 
     return jsonify({"status": "received"}), 200
 
@@ -447,6 +456,11 @@ class App(ctk.CTk):
             level = int(command.split(":")[1])
             self._difficulty = level
             print("Set difficulty to:", level)
+
+        elif command.startswith("start_new_session"):
+            song_name = command.split(":")[1]
+            song_idx = SONG_TO_INDEX[song_name]
+            self._switch_session(song_idx)
 
     def _switch_session(self, index: int):
         pass  # TODO: assume countdown upon new session

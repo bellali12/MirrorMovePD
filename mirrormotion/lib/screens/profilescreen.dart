@@ -12,18 +12,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(),
       body: Center(
-        child: ElevatedButton(
-          child: Text('Logout'),
-          onPressed: () {
-            Auth().logout().then((_) {
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/',
-                (Route<dynamic> route) => false,
-              );
-            });
-          },
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton(
+              child: Text('Logout'),
+              onPressed: () {
+                Auth().logout().then((_) {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/',
+                    (Route<dynamic> route) => false,
+                  );
+                });
+              },
+            ),
+            ElevatedButton(
+              child: Text('Delete Account'),
+              onPressed: () {
+                Auth().deleteAccount().then((_) {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/',
+                    (Route<dynamic> route) => false,
+                  );
+                });
+              },
+            ),
+          ],
         ),
       ),
     );

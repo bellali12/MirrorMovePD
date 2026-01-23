@@ -4,6 +4,7 @@ import 'package:mirrormotion/components/chart.dart';
 import 'package:mirrormotion/size_config.dart';
 import 'package:mirrormotion/screens/sessionscreen.dart';
 import 'package:mirrormotion/services/data.dart';
+import 'package:mirrormotion/components/goaltimepopup.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -93,7 +94,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                     IconButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return GoalTimePopup();
+                          },
+                        );
+                      },
                       icon: const Icon(
                         Icons.notifications,
                         color: Colors.white,

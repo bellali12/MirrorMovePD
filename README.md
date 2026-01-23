@@ -76,3 +76,20 @@ General Concept Overview:
 
 NOTES FOR BELLA:
 For the sake of demonstration the connection logic and popups should now work. If you are running the app via an emulator and also running the desktop app on the same machine use 127.0.0.1 as the connection code. Otherwise, use whatever code is given by the desktop program's popup.
+
+
+
+
+# App Store Components
+
+Icon: 512x512 PNG image
+Name: MirrorMove PD
+Subtitle (30 char):
+Promotional Text (170 char):
+Description (4000 char):
+Support URL: GOOGLE SITE
+Marketing URL (optional): GOOGLE SITE
+
+https://doc-hosting.flycricket.io/mirrormove-pd-privacy-policy/253a7d40-db99-4176-8b80-0ad00650b2a7/privacy
+
+https://doc-hosting.flycricket.io/mirrormove-pd-terms-of-use/93d80b01-47ed-4168-8dcf-57d4d5f08b71/terms

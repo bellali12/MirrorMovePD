@@ -40,4 +40,19 @@ class Auth {
       throw Exception('Logout failed: $e');
     }
   }
+
+  Future<void> deleteAccount() async {
+    try {
+      // Delete user data from Firestore
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(FirebaseAuth.instance.currentUser?.uid)
+          .delete();
+
+      // Delete user from Firebase Auth
+      await FirebaseAuth.instance.currentUser?.delete();
+    } catch (e) {
+      throw Exception('Account deletion failed: $e');
+    }
+  }
 }

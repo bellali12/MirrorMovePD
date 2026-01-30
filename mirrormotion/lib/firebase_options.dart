@@ -24,10 +24,7 @@ class DefaultFirebaseOptions {
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for android - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return android;
       case TargetPlatform.iOS:
         return ios;
       case TargetPlatform.macOS:
@@ -60,4 +57,13 @@ class DefaultFirebaseOptions {
     storageBucket: 'mirrormove-3ca58.firebasestorage.app',
     iosBundleId: 'com.example.mirrormotion',
   );
+
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyBJ-fc1Mhnnm2BBTXa-rnz4IJLhgp29j2o',
+    appId: '1:286716406424:android:8b46e6bb0269c5ae8bfeed',
+    messagingSenderId: '286716406424',
+    projectId: 'mirrormove-3ca58',
+    storageBucket: 'mirrormove-3ca58.firebasestorage.app',
+  );
+
 }

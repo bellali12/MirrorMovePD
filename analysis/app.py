@@ -10,6 +10,7 @@ import time
 import os
 import simpleaudio as sa
 import queue
+import random
 
 """
 ISSUES:
@@ -29,7 +30,15 @@ except Exception:
     pass
 
 # ----- CONFIG -----
-REFERENCE_VIDEO_PATH = "videos/IMG_8404.mp4"
+REFERENCE_VIDEO_PATH = "videos/Every Breath You Take.mp4"
+SONG_TO_INDEX = {
+    "Every Breath You Take": 0,
+    "All That Jazz": 1,
+    "Dance of the Sugar Plum Fairy": 2,
+    "New York, New York": 3
+}
+
+
 USER_CAMERA_INDEX = 0
 FPS = 30
 VIDEO_WIDTH = 480
@@ -64,6 +73,27 @@ def disconnect():
     global is_connected
     is_connected = False
     return jsonify({"connected": False}), 200
+
+
+@flask_app.route('/song_data', methods=['POST'])
+def song_data():
+    data = request.json
+    print(f"Received song data: {data}")
+
+    # Get all the filenames in the 'videos' directory
+    video_filenames = os.listdir('videos')
+    print(f"Available video files: {video_filenames}")
+
+    target_name = data.get("title", "")
+
+    for filename in video_filenames:
+        # Strip off the extension
+        name_without_ext = os.path.splitext(filename)[0]
+        if name_without_ext.lower() == target_name.lower():
+            print(f"Matched video file: {filename}")
+            command_queue.put(f"start_new_session:{filename[:-4]}")
+
+    return jsonify({"status": "received"}), 200
 
 
 @flask_app.route('/command', methods=['POST'])
@@ -316,8 +346,11 @@ class App(ctk.CTk):
         self._volume = 40
         self.after(250, self._poll_commands)
 
-        self._sessions = []
+        self._sessions = ['videos/Birds_Li.mp4',
+                          'videos/Dance of the Sugar Plum Fairy_Tchaikovsky.mp4', 'videos/Rainbows_Bella.mp4']
         self._session_index = 0
+        self._master_sessions = [
+            'videos/Birds_Li.mp4', 'videos/Dance of the Sugar Plum Fairy_Tchaikovsky.mp4', 'videos/Rainbows_Bella.mp4']
 
         # Toast state
         self._toast_window = None
@@ -409,9 +442,11 @@ class App(ctk.CTk):
                 self.left_panel.set_paused(True)
                 self.sound_player.stop()
         elif command == "prev_session":
-            pass
+            self._session_index -= 1
+            self._switch_session(self._session_index)
         elif command == "next_session":
-            pass
+            self._session_index += 1
+            self._switch_session(self._session_index)
         elif command.startswith("set_volume:"):
             volume = float(command.split(":")[1])
             self._volume = volume
@@ -422,8 +457,37 @@ class App(ctk.CTk):
             self._difficulty = level
             print("Set difficulty to:", level)
 
+        elif command.startswith("start_new_session"):
+            song_name = command.split(":")[1]
+            song_idx = SONG_TO_INDEX[song_name]
+            self._switch_session(song_idx)
+
     def _switch_session(self, index: int):
-        pass  # assume countdown upon new session
+        pass  # TODO: assume countdown upon new session
+
+        if not self._sessions:
+            return
+
+        # If overflow to higher levels, regenerate new sequence
+        # If overflow to previous levels, stops working
+        if index < 0:
+            return
+        if index == len(self._sessions):
+            chosen_session = random.choice(self._master_sessions)
+            self._sessions.append(chosen_session)
+
+        new_path = self._sessions[index]
+        print('Switching to session')
+
+        session_parent = self.left_panel.master
+        self.left_panel.release()
+        self.left_panel.destroy()
+
+        self.left_panel = VideoPanel(session_parent, new_path)
+        self.left_panel.grid(
+            row=0, column=0, sticky='nsew', padx=(8, 4), pady=8)
+        self.left_panel.set_paused(True)
+        self.sound_player.stop()
 
     def _show_ip_popup(self):
         """Show a one-time, clearer message in the embedded connection bar."""

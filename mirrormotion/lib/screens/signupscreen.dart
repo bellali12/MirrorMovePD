@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mirrormotion/size_config.dart';
 import 'package:mirrormotion/services/auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -13,6 +14,17 @@ class _SignupScreenState extends State<SignupScreen> {
   TextEditingController emailController = TextEditingController();
   TextEditingController passwordController = TextEditingController();
   TextEditingController retypePasswordController = TextEditingController();
+
+  Future<void> _launchPrivacyPolicyURL() async {
+    final Uri url = Uri.parse(
+      'https://doc-hosting.flycricket.io/mirrormove-pd-privacy-policy/253a7d40-db99-4176-8b80-0ad00650b2a7/privacy',
+    );
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
+    } else {
+      throw 'Could not launch $url';
+    }
+  }
 
   bool validCredentials() {
     if (emailController.text.isEmpty ||
@@ -170,8 +182,13 @@ class _SignupScreenState extends State<SignupScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  // TextButton(onPressed: () {}, child: Text("Forgot password?")),
-                  Container(width: SizeConfig.horizontal! * 34),
+                  TextButton(
+                    onPressed: () {
+                      _launchPrivacyPolicyURL();
+                    },
+                    child: Text("Privacy Policy"),
+                  ),
+                  // Container(width: SizeConfig.horizontal! * 34),
                   TextButton(
                     onPressed: () {
                       Navigator.pushNamed(context, '/login');

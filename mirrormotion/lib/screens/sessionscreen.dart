@@ -61,7 +61,9 @@ import 'package:mirrormotion/services/data.dart';
 // TODO: poll the server periodically to check connection status
 
 class SessionScreen extends StatefulWidget {
-  const SessionScreen({super.key});
+  const SessionScreen({super.key, this.initialSongData});
+
+  final Map<String, dynamic>? initialSongData;
 
   @override
   State<SessionScreen> createState() => _SessionScreenState();
@@ -125,7 +127,7 @@ class _SessionScreenState extends State<SessionScreen> {
           context: context,
           barrierDismissible: false,
           builder: (BuildContext context) {
-            return const ConnectionPopUp();
+            return ConnectionPopUp(initialSongData: widget.initialSongData);
           },
         );
         if (mounted && (connected ?? false)) {
@@ -338,7 +340,9 @@ class _SessionScreenState extends State<SessionScreen> {
                   context: context,
                   barrierDismissible: false,
                   builder: (BuildContext context) {
-                    return const ConnectionPopUp();
+                    return ConnectionPopUp(
+                      initialSongData: widget.initialSongData,
+                    );
                   },
                 ).then((connected) {
                   if (mounted && (connected ?? false)) {
@@ -415,7 +419,9 @@ class _DifficultyButtonState extends State<DifficultyButton> {
 }
 
 class ConnectionPopUp extends StatefulWidget {
-  const ConnectionPopUp({super.key});
+  const ConnectionPopUp({super.key, this.initialSongData});
+
+  final Map<String, dynamic>? initialSongData;
 
   @override
   State<ConnectionPopUp> createState() => _ConnectionPopUpState();
@@ -503,8 +509,11 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
 
       if (resp.statusCode == 200) {
         if (!mounted) return;
-        Navigator.of(context).pop(true); // success; parent marks connected
         dataService.desktopAppUrl = "http://${host[0]}";
+        sendInitialSongRequest().then((value) {
+          print("initial request $value");
+          Navigator.of(context).pop(true); // success; parent marks connected
+        });
       } else {
         // Attempt the altHost
         final altUri = Uri.parse("http://${host[1]}/connect");
@@ -517,8 +526,11 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
             .timeout(const Duration(seconds: 5));
         if (altResp.statusCode == 200) {
           if (!mounted) return;
-          Navigator.of(context).pop(true); // success; parent marks connected
           dataService.desktopAppUrl = "http://${host[1]}";
+          sendInitialSongRequest().then((value) {
+            print("initial request $value");
+            Navigator.of(context).pop(true); // success; parent marks connected
+          });
           return;
         }
 
@@ -537,8 +549,12 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
       );
       if (altResp.statusCode == 200) {
         if (!mounted) return;
-        Navigator.of(context).pop(true); // success; parent marks connected
+
         dataService.desktopAppUrl = "http://${host[1]}";
+        sendInitialSongRequest().then((value) {
+          print("initial request $value");
+          Navigator.of(context).pop(true); // success; parent marks connected
+        });
         return;
       }
 
@@ -548,6 +564,32 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
       setState(() => _error = "Could not reach desktop. Ensure same Wi-Fi. $e");
     } finally {
       if (mounted) setState(() => _connecting = false);
+    }
+  }
+
+  Future<bool> sendInitialSongRequest() async {
+    final uri = Uri.parse("${dataService.desktopAppUrl}/song_data");
+
+    if (widget.initialSongData == null) {
+      return false;
+    }
+
+    try {
+      final resp = await http.post(
+        uri,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(widget.initialSongData),
+      );
+      if (resp.statusCode == 200) {
+        print("Initial song data retrieved successfully.");
+        return true;
+      } else {
+        print("Failed to retrieve song data. Status code: ${resp.statusCode}");
+        return false;
+      }
+    } catch (e) {
+      print("Error retrieving song data: $e");
+      return false;
     }
   }
 

@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mirrormotion/components/chart.dart';
 import 'package:mirrormotion/size_config.dart';
 import 'package:mirrormotion/screens/sessionscreen.dart';
+import 'package:mirrormotion/services/data.dart';
+import 'package:mirrormotion/components/goaltimepopup.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,6 +16,34 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   String todayVideoPath = "assets/IMG_7837.MOV";
   String todayThumbnailPath = "assets/IMG_8248.jpg";
+  DataService dataService = DataService();
+
+  List<Map<String, dynamic>> availableSongs = [
+    {'title': 'Rainbow', 'artist': 'Bella Li', 'level': 5, 'duration': '10:00'},
+    {
+      'title': 'Sunshine',
+      'artist': 'John Doe',
+      'level': 3,
+      'duration': '08:30',
+    },
+    {
+      'title': 'Starlight',
+      'artist': 'Jane Smith',
+      'level': 4,
+      'duration': '09:15',
+    },
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+
+    dataService.getSongs().then(((songs) {
+      setState(() {
+        availableSongs = songs;
+      });
+    }));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +94,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                     IconButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return GoalTimePopup();
+                          },
+                        );
+                      },
                       icon: const Icon(
                         Icons.notifications,
                         color: Colors.white,
@@ -157,9 +194,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
                 // video thumbnail
-                SizedBox(
+                Container(
                   // width: SizeConfig.horizontal! * 90,
-                  height: SizeConfig.vertical! * 30,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.all(Radius.circular(12)),
+                    color: const Color.fromARGB(255, 169, 189, 195),
+                  ),
+                  height: SizeConfig.vertical! * 10,
                   child: InkWell(
                     onTap: () {
                       // open the session screen with the specified video
@@ -172,13 +213,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                     child: Stack(
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Image.asset(
-                            todayThumbnailPath,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
+                        // ClipRRect(
+                        //   borderRadius: BorderRadius.circular(20),
+                        //   child: Image.asset(
+                        //     todayThumbnailPath,
+                        //     fit: BoxFit.cover,
+                        //   ),
+                        // ),
                         Center(
                           child: Icon(
                             Icons.play_circle_fill,
@@ -192,6 +233,86 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  height: SizeConfig.vertical! * 30,
+                  width:
+                      SizeConfig.horizontal! *
+                      100, //TODO: Fix horizontal padding
+                  child: Card(
+                    color: const Color.fromARGB(
+                      255,
+                      255,
+                      213,
+                      213,
+                    ).withValues(alpha: 0.9),
+                    child: Padding(
+                      padding: EdgeInsets.all(10),
+                      child: Column(
+                        children: [
+                          Text("Pick a song to dance to"),
+                          Expanded(
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: availableSongs.length,
+                              itemBuilder: (context, index) {
+                                return Card(
+                                  child: InkWell(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => SessionScreen(
+                                            initialSongData:
+                                                availableSongs[index],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(8.0),
+                                      child: Column(
+                                        children: [
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                availableSongs[index]['title'],
+                                                textAlign: TextAlign.left,
+                                                style: GoogleFonts.poppins(
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              Text(
+                                                "Level: ${availableSongs[index]['level']}",
+                                              ),
+                                            ],
+                                          ),
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                "${availableSongs[index]['artist']}",
+                                              ),
+                                              Text(
+                                                "Duration: ${availableSongs[index]['duration']}",
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

@@ -154,15 +154,15 @@ def get_lan_ip(prefer_prefix: str = "192.168.") -> str:
         except Exception:
             return False
 
-    print("LAN IP candidates:", candidates)
+    # print("LAN IP candidates:", candidates)
 
     sorted_candidates = sorted(candidates)
     for ip in sorted_candidates:
         if ip.startswith(prefer_prefix) and good(ip):
             return ip
     for ip in sorted_candidates:
-        print("Checking candidate IP:", ip)
-        print("Is good?", good(ip))
+        # print("Checking candidate IP:", ip)
+        # print("Is good?", good(ip))
         if good(ip):
             return ip
     return "127.0.0.1"
@@ -346,11 +346,17 @@ class App(ctk.CTk):
         self._volume = 40
         self.after(250, self._poll_commands)
 
-        self._sessions = ['videos/Birds_Li.mp4',
-                          'videos/Dance of the Sugar Plum Fairy_Tchaikovsky.mp4', 'videos/Rainbows_Bella.mp4']
+        self._sessions = ['videos/Every Breath You Take.mp4',
+                          'videos/Dance of the Sugar Plum Fairy.mp4',
+                          'videos/All That Jazz.mp4',
+                          'videos/New York, New York.mp4',
+                          ]
         self._session_index = 0
-        self._master_sessions = [
-            'videos/Birds_Li.mp4', 'videos/Dance of the Sugar Plum Fairy_Tchaikovsky.mp4', 'videos/Rainbows_Bella.mp4']
+        self._master_sessions = ['videos/Every Breath You Take.mp4',
+                                 'videos/Dance of the Sugar Plum Fairy.mp4',
+                                 'videos/All That Jazz.mp4',
+                                 'videos/New York, New York.mp4',
+                                 ]
 
         # Toast state
         self._toast_window = None
@@ -437,10 +443,10 @@ class App(ctk.CTk):
         if command == "play_session":
             if self.left_panel._paused:
                 self.left_panel.set_paused(False)
-                self.sound_player.start()
+                # self.sound_player.start()
             else:
                 self.left_panel.set_paused(True)
-                self.sound_player.stop()
+                # self.sound_player.stop()
         elif command == "prev_session":
             self._session_index -= 1
             self._switch_session(self._session_index)
@@ -534,14 +540,14 @@ class App(ctk.CTk):
         if not is_connected:
             self._ensure_ip_toast()
             self.left_panel.set_paused(True)
-            self.sound_player.stop()
+            # self.sound_player.stop()
             if not self._popup_shown_this_session:
                 self._show_ip_popup()
 
         else:
             self._hide_ip_toast()
             self.left_panel.set_paused(False)
-            self.sound_player.start()
+            # self.sound_player.start()
             self._popup_shown_this_session = True
         self.after(500, self._update_connection_toast)
     # ----- end toast -----

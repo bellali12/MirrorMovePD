@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:mirrormotion/size_config.dart';
 import 'package:audio_visualizer/audio_visualizer.dart';
 import 'package:mirrormotion/services/data.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /*
   Instructor video on top and view of the user on bottom.
@@ -434,6 +435,16 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
 
   DataService dataService = DataService();
 
+  // url launcher helper
+  Future<void> _launchURL(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      throw 'Could not launch $url';
+    }
+  }
+
   // Converts a "connection code" to host:port.
   // Desktop shows Connection Code derived from IP with "192.168." removed.
   // Examples:
@@ -603,6 +614,9 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Text(
+              "Desktop app is required for dance sessions. Once downloaded, it will display the connection code.",
+            ),
             TextField(
               controller: _codeCtrl,
               enabled: !_connecting,
@@ -623,7 +637,13 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
             ],
             const SizedBox(height: 8),
             TextButton(
-              onPressed: _connecting ? null : () {},
+              onPressed: _connecting
+                  ? null
+                  : () {
+                      _launchURL(
+                        "https://sites.google.com/view/mirrormovepd/home",
+                      );
+                    },
               child: const Text(
                 "Don't have the desktop app? Click to download.",
                 style: TextStyle(

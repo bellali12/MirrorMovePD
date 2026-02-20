@@ -1,8 +1,9 @@
-import 'dart:async';
+// import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:wheel_picker/wheel_picker.dart';
+// import 'package:wheel_picker/wheel_picker.dart';
 import 'package:mirrormotion/size_config.dart';
 import 'package:percent_indicator/percent_indicator.dart';
+import 'package:mirrormotion/services/data.dart';
 
 class GoalTimePopup extends StatefulWidget {
   const GoalTimePopup({super.key});
@@ -12,15 +13,42 @@ class GoalTimePopup extends StatefulWidget {
 }
 
 class _GoalTimePopupState extends State<GoalTimePopup> {
+  final DataService dataService = DataService();
+  String statusText = "Start moving now!";
+
   @override
   Widget build(BuildContext context) {
-    final secondsWheel = WheelPickerController(itemCount: 10);
+    // final secondsWheel = WheelPickerController(itemCount: 10);
     const textStyle = TextStyle(fontSize: 32.0, height: 1.5);
 
-    Timer.periodic(const Duration(seconds: 1), (_) => secondsWheel.shiftDown());
+    // Timer.periodic(const Duration(seconds: 1), (_) => secondsWheel.shiftDown());
+
+    int dailyMinutes = dataService.userData["dailyMinutes"] ?? 30;
+    Map<String, dynamic> progressData = dataService.userData["progress"] ?? {};
+    int currentMinutes = progressData["currentMinutes"] ?? 0;
+    DateTime lastUpdated = DateTime.parse(
+      progressData["lastUpdated"] ?? DateTime.now().toString(),
+    );
+
+    double progress = currentMinutes / (dailyMinutes * 1.0);
+
+    switch (progress) {
+      case 0.0:
+        statusText = "Start moving now!";
+        break;
+      // case :
+      //   statusText = "Great start! Keep it up!";
+      //   break;
+      // case :
+      //   statusText = "You're doing great! Almost there!";
+      //   break;
+      // case :
+      //   statusText = "Congratulations! Goal achieved!";
+      //   break;
+    }
 
     return AlertDialog(
-      title: Text("Set your daily goal time"),
+      title: Text(statusText), // TODO: make variable
       content: Container(
         height: SizeConfig.vertical! * 50,
         width: SizeConfig.horizontal! * 80,
@@ -31,12 +59,12 @@ class _GoalTimePopupState extends State<GoalTimePopup> {
               radius: 140.0,
               lineWidth: 33.0,
               animation: true,
-              percent: 0.7,
+              percent: progress.clamp(0.0, 1.0),
               center: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    "70.0%",
+                    "${progress * 100}%",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 20.0,

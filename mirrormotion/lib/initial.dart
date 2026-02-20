@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:mirrormotion/screens/homescreen.dart';
 import 'package:mirrormotion/screens/signupscreen.dart';
 import 'package:mirrormotion/services/auth.dart';
+import 'package:mirrormotion/services/data.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Initial extends StatelessWidget {
   const Initial({super.key});
@@ -13,8 +15,32 @@ class Initial extends StatelessWidget {
 
     if (user == null) {
       return const SignupScreen();
-    } else {
-      return const HomeScreen();
     }
+    // else {
+    //   return const HomeScreen();
+    // }
+
+    print("User ID: ${user.uid}");
+    return StreamBuilder(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasData) {
+          var userData = snapshot.data!.data();
+          DataService().userData = userData!;
+          print('User Data: $userData');
+
+          // TODO: scan userdata to check if they should go to onboarding
+
+          return const HomeScreen();
+        } else {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+      },
+    );
   }
 }

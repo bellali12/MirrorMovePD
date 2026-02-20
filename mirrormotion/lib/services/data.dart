@@ -13,6 +13,7 @@ class DataService extends ChangeNotifier {
   DataService._internal();
 
   // Add your data properties and methods here
+  Map<String, dynamic> userData = {};
 
   String desktopAppUrl = '';
 

@@ -29,12 +29,27 @@ class Initial extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.hasData) {
           var userData = snapshot.data!.data();
-          DataService().userData = userData!;
+          // DataService().userData = userData!;
           print('User Data: $userData');
 
-          // TODO: scan userdata to check if they should go to onboarding
+          Map<String, dynamic> userDataMap = userData as Map<String, dynamic>;
 
-          return const HomeScreen();
+          DataService().userData = userDataMap;
+
+          if (userDataMap.containsKey('onboardingComplete') &&
+              userDataMap['onboardingComplete'] == true) {
+            return const HomeScreen();
+          } else {
+            // TODO: for now just continue to home screen until onboarding is implemented
+            return const HomeScreen();
+
+            // If onboarding is not complete, navigate to the onboarding screen
+            // return const Scaffold(
+            //   body: Center(child: Text('Please complete onboarding')),
+            // );
+          }
+
+          // return const HomeScreen();
         } else {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),

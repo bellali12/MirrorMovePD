@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'package:mirrormotion/services/data.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 class BarChartWidget extends StatefulWidget {
@@ -14,6 +14,8 @@ class _BarChartWidgetState extends State<BarChartWidget> {
   Color barColor = Colors.white;
   Color barBackgroundColor = Colors.grey;
   final Duration animDuration = const Duration(milliseconds: 250);
+
+  final DataService dataService = DataService();
 
   @override
   Widget build(BuildContext context) {
@@ -48,22 +50,130 @@ class _BarChartWidgetState extends State<BarChartWidget> {
     );
   }
 
+  List<int> getUsageData() {
+    Map<String, dynamic> usageData = dataService.userData;
+
+    int todayGoal = usageData['dailyMinutes'] ?? 40;
+    int todayProgress = 0;
+    if (usageData.containsKey('progress')) {
+      DateTime lastUpdated = DateTime.parse(
+        usageData['progress']['lastUpdated'],
+      );
+      if (DateTime.now().difference(lastUpdated).inDays == 0) {
+        todayProgress = usageData['progress']['currentMinutes'] ?? 0;
+      } else {
+        // TODO: reset progress if last updated is not today
+      }
+    }
+
+    // If the goalChanges key exists, iterate through the timestamps
+    // If the timestamp is more than a week away, ignore it
+    // For each day, mark the most recent goal change to be the goal for that day
+    Map<String, int> dailyGoals = {};
+    if (usageData.containsKey('goalChanges')) {
+      Map<String, dynamic> goalChanges =
+          usageData['goalChanges']; // key is timestamp and value is goal
+
+      for (var change in goalChanges.entries) {
+        DateTime timestamp = DateTime.parse(change.key);
+        if (DateTime.now().difference(timestamp).inDays <= 7) {
+          String day = timestamp.weekday.toString();
+
+          if (!dailyGoals.containsKey(day) ||
+              timestamp.isAfter(DateTime.parse(dailyGoals[day]! as String))) {
+            dailyGoals[day] = change.value;
+          }
+        }
+      }
+    }
+    // Now we have a map of daily goals for the past week, we can use this to determine the goal for each day
+    // To get the use of those days, we then check for session history and sum up the minutes for each day, then we can return a list of usage data for the past week
+    List<int> usageDataList = [];
+    if (usageData.containsKey('sessionHistory')) {
+      Map<String, dynamic> sessionHistory = usageData['sessionHistory'];
+      for (var session in sessionHistory.values) {
+        DateTime startTime = DateTime.parse(session['startTime']);
+        DateTime endTime = DateTime.parse(session['endTime']);
+        if (DateTime.now().difference(startTime).inDays <= 7) {
+          String day = startTime.weekday.toString();
+          int minutes = endTime.difference(startTime).inMinutes;
+          if (dailyGoals.containsKey(day)) {
+            usageDataList[int.parse(day) - 1] += minutes;
+          } else {
+            usageDataList[int.parse(day) - 1] += minutes;
+          }
+        } else {
+          // TODO: remove old session history
+        }
+      }
+    }
+    // Construct the return package: [day0/goal0, ..., day6/goal6, todayProgress, todayGoal]
+    List<int> returnData = [];
+    for (int i = 0; i < 7; i++) {
+      // String day = (i + 1).toString();
+      if (usageDataList.length > i) {
+        returnData.add(usageDataList[i]);
+      } else {
+        returnData.add(0);
+      }
+      // if (dailyGoals.containsKey(day)) {
+      //   returnData.add(dailyGoals[day]!);
+      // } else {
+      //   returnData.add(40);
+      // }
+    }
+
+    return returnData;
+  }
+
   List<BarChartGroupData> showingGroups() => List.generate(7, (i) {
+    List<int> usageData = getUsageData();
+
+    print(usageData);
+
     switch (i) {
       case 0:
-        return makeGroupData(0, 5, isTouched: i == touchedIndex);
+        return makeGroupData(
+          0,
+          usageData[0] * 1.0,
+          isTouched: i == touchedIndex,
+        );
       case 1:
-        return makeGroupData(1, 6.5, isTouched: i == touchedIndex);
+        return makeGroupData(
+          1,
+          usageData[1] * 1.0,
+          isTouched: i == touchedIndex,
+        );
       case 2:
-        return makeGroupData(2, 5, isTouched: i == touchedIndex);
+        return makeGroupData(
+          2,
+          usageData[2] * 1.0,
+          isTouched: i == touchedIndex,
+        );
       case 3:
-        return makeGroupData(3, 7.5, isTouched: i == touchedIndex);
+        return makeGroupData(
+          3,
+          usageData[3] * 1.0,
+          isTouched: i == touchedIndex,
+        );
       case 4:
-        return makeGroupData(4, 9, isTouched: i == touchedIndex);
+        return makeGroupData(
+          4,
+          usageData[4] * 1.0,
+          isTouched: i == touchedIndex,
+        );
       case 5:
-        return makeGroupData(5, 11.5, isTouched: i == touchedIndex);
+        return makeGroupData(
+          5,
+          usageData[5] * 1.0,
+          isTouched: i == touchedIndex,
+        );
       case 6:
-        return makeGroupData(6, 6.5, isTouched: i == touchedIndex);
+        return makeGroupData(
+          6,
+          usageData[6] * 1.0,
+          isTouched: i == touchedIndex,
+        );
       default:
         return throw Error();
     }

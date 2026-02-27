@@ -34,6 +34,25 @@ class _HomeScreenState extends State<HomeScreen> {
     },
   ];
 
+  int todayGoal = 40;
+  int todayProgress = 0;
+
+  void getTodayProgress() {
+    Map<String, dynamic> usageData = dataService.userData;
+    todayGoal = usageData['dailyMinutes'] ?? 40;
+    todayProgress = 0;
+    if (usageData.containsKey('progress')) {
+      DateTime lastUpdated = DateTime.parse(
+        usageData['progress']['lastUpdated'],
+      );
+      if (DateTime.now().difference(lastUpdated).inDays == 0) {
+        todayProgress = usageData['progress']['currentMinutes'] ?? 0;
+      } else {
+        // TODO: reset progress if last updated is not today
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -43,6 +62,8 @@ class _HomeScreenState extends State<HomeScreen> {
         availableSongs = songs;
       });
     }));
+
+    getTodayProgress();
   }
 
   @override
@@ -140,7 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
                                   Text(
-                                    "20/60 mins",
+                                    "$todayProgress/$todayGoal mins",
                                     style: GoogleFonts.poppins(
                                       color: Color.fromARGB(255, 255, 211, 211),
                                       fontSize: 20,

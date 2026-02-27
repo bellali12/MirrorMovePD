@@ -3,11 +3,19 @@ import 'package:mirrormotion/routes.dart';
 import 'package:mirrormotion/size_config.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:mirrormotion/firebase_options.dart';
+import 'package:provider/provider.dart';
+import 'package:mirrormotion/services/data.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  runApp(const MyApp());
+  // runApp(const MyApp());
+  runApp(
+    MultiProvider(
+      providers: [ChangeNotifierProvider(create: (_) => DataService())],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {

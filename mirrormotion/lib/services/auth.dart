@@ -27,7 +27,7 @@ class Auth {
       await FirebaseFirestore.instance
           .collection('users')
           .doc(FirebaseAuth.instance.currentUser?.uid)
-          .set({'sessionHistory': {}});
+          .set({'sessionHistory': {}, 'onboardingComplete': false});
     } catch (e) {
       throw Exception('Login failed: $e');
     }

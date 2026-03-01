@@ -23,11 +23,21 @@ class Auth {
         password: password,
       );
 
+      final int nowEpochSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final int defaultDailyMinutes = 30;
+
       // Initialize user data in Firestore
       await FirebaseFirestore.instance
           .collection('users')
           .doc(FirebaseAuth.instance.currentUser?.uid)
-          .set({'sessionHistory': {}, 'onboardingComplete': false});
+          .set({
+            'name': email.split('@').first,
+            'dailyMinutes': defaultDailyMinutes,
+            'goalChanges': {nowEpochSeconds.toString(): defaultDailyMinutes},
+            'progress': {'currentMinutes': 0, 'lastUpdated': Timestamp.now()},
+            'sessionHistory': {},
+            'onboardingComplete': false,
+          });
     } catch (e) {
       throw Exception('Login failed: $e');
     }

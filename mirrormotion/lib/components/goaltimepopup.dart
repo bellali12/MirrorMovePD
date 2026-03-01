@@ -14,42 +14,44 @@ class GoalTimePopup extends StatefulWidget {
 
 class _GoalTimePopupState extends State<GoalTimePopup> {
   final DataService dataService = DataService();
-  String statusText = "Start moving now!";
+
+  @override
+  void initState() {
+    super.initState();
+    dataService.addListener(_onUserDataChanged);
+  }
+
+  void _onUserDataChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
+  String _statusForProgress(double progress) {
+    if (progress <= 0.0) {
+      return "Start moving now!";
+    }
+    if (progress < 0.5) {
+      return "Great start! Keep going!";
+    }
+    if (progress < 1.0) {
+      return "Almost there!";
+    }
+    return "Daily goal complete!";
+  }
 
   @override
   Widget build(BuildContext context) {
-    // final secondsWheel = WheelPickerController(itemCount: 10);
-    const textStyle = TextStyle(fontSize: 32.0, height: 1.5);
-
-    // Timer.periodic(const Duration(seconds: 1), (_) => secondsWheel.shiftDown());
-
-    int dailyMinutes = dataService.userData["dailyMinutes"] ?? 30;
-    Map<String, dynamic> progressData = dataService.userData["progress"] ?? {};
-    int currentMinutes = progressData["currentMinutes"] ?? 0;
-    DateTime lastUpdated = DateTime.parse(
-      progressData["lastUpdated"] ?? DateTime.now().toString(),
-    );
-
-    double progress = currentMinutes / (dailyMinutes * 1.0);
-
-    switch (progress) {
-      case 0.0:
-        statusText = "Start moving now!";
-        break;
-      // case :
-      //   statusText = "Great start! Keep it up!";
-      //   break;
-      // case :
-      //   statusText = "You're doing great! Almost there!";
-      //   break;
-      // case :
-      //   statusText = "Congratulations! Goal achieved!";
-      //   break;
-    }
+    final ProgressSnapshot progressSnapshot = dataService
+        .getTodayProgressSnapshot();
+    final double progress = progressSnapshot.percent;
+    final String statusText = _statusForProgress(progress);
+    final int percentLabel = (progress * 100).round();
 
     return AlertDialog(
-      title: Text(statusText), // TODO: make variable
-      content: Container(
+      title: Text(statusText),
+      content: SizedBox(
         height: SizeConfig.vertical! * 50,
         width: SizeConfig.horizontal! * 80,
         child: Column(
@@ -64,11 +66,15 @@ class _GoalTimePopupState extends State<GoalTimePopup> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    "${progress * 100}%",
+                    "$percentLabel%",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 20.0,
                     ),
+                  ),
+                  Text(
+                    "${progressSnapshot.currentMinutes}/${progressSnapshot.goalMinutes} mins",
+                    style: TextStyle(fontSize: 14.0),
                   ),
                   Text(
                     "Daily Dance Workout",
@@ -137,6 +143,7 @@ class _GoalTimePopupState extends State<GoalTimePopup> {
 
   @override
   void dispose() {
+    dataService.removeListener(_onUserDataChanged);
     super.dispose();
   }
 }

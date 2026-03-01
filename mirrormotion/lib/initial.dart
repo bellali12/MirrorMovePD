@@ -20,7 +20,6 @@ class Initial extends StatelessWidget {
     //   return const HomeScreen();
     // }
 
-    print("User ID: ${user.uid}");
     return StreamBuilder(
       stream: FirebaseFirestore.instance
           .collection('users')
@@ -28,11 +27,9 @@ class Initial extends StatelessWidget {
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasData) {
-          var userData = snapshot.data!.data();
-          // DataService().userData = userData!;
-          print('User Data: $userData');
-
-          Map<String, dynamic> userDataMap = userData as Map<String, dynamic>;
+          final Map<String, dynamic> userDataMap = Map<String, dynamic>.from(
+            snapshot.data!.data() ?? <String, dynamic>{},
+          );
 
           DataService().userData = userDataMap;
 

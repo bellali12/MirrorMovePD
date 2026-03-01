@@ -16,7 +16,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   String todayVideoPath = "assets/IMG_7837.MOV";
   String todayThumbnailPath = "assets/IMG_8248.jpg";
-  DataService dataService = DataService();
+  final DataService dataService = DataService();
 
   List<Map<String, dynamic>> availableSongs = [
     {'title': 'Rainbow', 'artist': 'Bella Li', 'level': 5, 'duration': '10:00'},
@@ -34,40 +34,36 @@ class _HomeScreenState extends State<HomeScreen> {
     },
   ];
 
-  int todayGoal = 40;
-  int todayProgress = 0;
-
-  void getTodayProgress() {
-    Map<String, dynamic> usageData = dataService.userData;
-    todayGoal = usageData['dailyMinutes'] ?? 40;
-    todayProgress = 0;
-    if (usageData.containsKey('progress')) {
-      DateTime lastUpdated = DateTime.parse(
-        usageData['progress']['lastUpdated'],
-      );
-      if (DateTime.now().difference(lastUpdated).inDays == 0) {
-        todayProgress = usageData['progress']['currentMinutes'] ?? 0;
-      } else {
-        // TODO: reset progress if last updated is not today
-      }
+  void _onUserDataChanged() {
+    if (!mounted) {
+      return;
     }
+    setState(() {});
   }
 
   @override
   void initState() {
     super.initState();
+    dataService.addListener(_onUserDataChanged);
 
     dataService.getSongs().then(((songs) {
       setState(() {
         availableSongs = songs;
       });
     }));
+  }
 
-    getTodayProgress();
+  @override
+  void dispose() {
+    dataService.removeListener(_onUserDataChanged);
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final ProgressSnapshot progressSnapshot = dataService
+        .getTodayProgressSnapshot();
+
     return Scaffold(
       backgroundColor: const Color(0xFF8B7D7D),
       body: SafeArea(
@@ -161,7 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
                                   Text(
-                                    "$todayProgress/$todayGoal mins",
+                                    "${progressSnapshot.currentMinutes}/${progressSnapshot.goalMinutes} mins",
                                     style: GoogleFonts.poppins(
                                       color: Color.fromARGB(255, 255, 211, 211),
                                       fontSize: 20,

@@ -17,6 +17,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String todayVideoPath = "assets/IMG_7837.MOV";
   String todayThumbnailPath = "assets/IMG_8248.jpg";
   final DataService dataService = DataService();
+  final ScrollController _songsScrollController = ScrollController();
 
   List<Map<String, dynamic>> availableSongs = [
     {'title': 'Rainbow', 'artist': 'Bella Li', 'level': 5, 'duration': '10:00'},
@@ -56,6 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     dataService.removeListener(_onUserDataChanged);
+    _songsScrollController.dispose();
     super.dispose();
   }
 
@@ -271,61 +273,74 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           Text("Pick a song to dance to"),
                           Expanded(
-                            child: ListView.builder(
-                              shrinkWrap: true,
-                              itemCount: availableSongs.length,
-                              itemBuilder: (context, index) {
-                                return Card(
-                                  child: InkWell(
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => SessionScreen(
-                                            initialSongData:
-                                                availableSongs[index],
+                            child: Scrollbar(
+                              controller: _songsScrollController,
+                              thumbVisibility: true,
+                              interactive: true,
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: ListView.builder(
+                                  controller: _songsScrollController,
+                                  shrinkWrap: true,
+                                  itemCount: availableSongs.length,
+                                  itemBuilder: (context, index) {
+                                    return Card(
+                                      child: InkWell(
+                                        onTap: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  SessionScreen(
+                                                    initialSongData:
+                                                        availableSongs[index],
+                                                  ),
+                                            ),
+                                          );
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(8.0),
+                                          child: Column(
+                                            children: [
+                                              Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    availableSongs[index]['title'],
+                                                    textAlign: TextAlign.left,
+                                                    style: GoogleFonts.poppins(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    "Level: ${availableSongs[index]['level']}",
+                                                  ),
+                                                ],
+                                              ),
+                                              Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    "${availableSongs[index]['artist']}",
+                                                  ),
+                                                  Text(
+                                                    "Duration: ${availableSongs[index]['duration']}",
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                      );
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(8.0),
-                                      child: Column(
-                                        children: [
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(
-                                                availableSongs[index]['title'],
-                                                textAlign: TextAlign.left,
-                                                style: GoogleFonts.poppins(
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              Text(
-                                                "Level: ${availableSongs[index]['level']}",
-                                              ),
-                                            ],
-                                          ),
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(
-                                                "${availableSongs[index]['artist']}",
-                                              ),
-                                              Text(
-                                                "Duration: ${availableSongs[index]['duration']}",
-                                              ),
-                                            ],
-                                          ),
-                                        ],
                                       ),
-                                    ),
-                                  ),
-                                );
-                              },
+                                    );
+                                  },
+                                ),
+                              ),
                             ),
                           ),
                         ],

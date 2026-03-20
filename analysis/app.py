@@ -54,11 +54,24 @@ SERVER_PORT = int(os.environ.get("MIRRORMOTION_PORT", "5003"))
 flask_app = Flask(__name__)
 
 is_connected = False
+song_metadata_registry = {}
+current_song_state = {
+    "title": os.path.splitext(os.path.basename(REFERENCE_VIDEO_PATH))[0],
+    "artist": "",
+    "duration": "",
+    "level": None,
+    "playing": False,
+}
 
 
 @flask_app.route('/status', methods=['GET'])
 def status():
-    return jsonify({"connected": is_connected, "ip": get_lan_ip(), "port": SERVER_PORT}), 200
+    return jsonify({
+        "connected": is_connected,
+        "ip": get_lan_ip(),
+        "port": SERVER_PORT,
+        "currentSong": dict(current_song_state),
+    }), 200
 
 
 @flask_app.route('/connect', methods=['POST'])
@@ -72,6 +85,7 @@ def connect():
 def disconnect():
     global is_connected
     is_connected = False
+    _set_current_song_playing(False)
     return jsonify({"connected": False}), 200
 
 
@@ -79,6 +93,7 @@ def disconnect():
 def song_data():
     data = request.json
     print(f"Received song data: {data}")
+    _register_song_metadata(data)
 
     # Get all the filenames in the 'videos' directory
     video_filenames = os.listdir('videos')
@@ -91,6 +106,7 @@ def song_data():
         name_without_ext = os.path.splitext(filename)[0]
         if name_without_ext.lower() == target_name.lower():
             print(f"Matched video file: {filename}")
+            _set_current_song(name_without_ext, playing=False)
             command_queue.put(f"start_new_session:{filename[:-4]}")
 
     return jsonify({"status": "received"}), 200
@@ -172,6 +188,49 @@ def button_callback():
     print("button clicked")
 
 
+def _song_key(title: str) -> str:
+    return str(title).strip().lower()
+
+
+def _register_song_metadata(song_data):
+    title = str(song_data.get("title", "")).strip()
+    if not title:
+        return
+
+    song_metadata_registry[_song_key(title)] = {
+        "title": title,
+        "artist": str(song_data.get("artist", "")).strip(),
+        "duration": str(song_data.get("duration", "")).strip(),
+        "level": song_data.get("level"),
+    }
+
+
+def _set_current_song(title: str, playing=None):
+    global current_song_state
+    normalized_title = str(title).strip()
+    if not normalized_title:
+        return
+
+    metadata = song_metadata_registry.get(_song_key(normalized_title), {})
+    current_song_state = {
+        "title": normalized_title,
+        "artist": str(metadata.get("artist", "")).strip(),
+        "duration": str(metadata.get("duration", "")).strip(),
+        "level": metadata.get("level"),
+        "playing": current_song_state.get("playing", False)
+        if playing is None
+        else bool(playing),
+    }
+
+
+def _set_current_song_playing(playing: bool):
+    global current_song_state
+    current_song_state = {
+        **current_song_state,
+        "playing": bool(playing),
+    }
+
+
 class SoundPlayer:
     def __init__(self, path: str):
         self.path = path
@@ -218,11 +277,15 @@ class SoundPlayer:
 
 
 class VideoPanel(ctk.CTkFrame):
-    def __init__(self, parent, source):
+    def __init__(self, parent, source, display_width=VIDEO_WIDTH, display_height=VIDEO_HEIGHT):
         super().__init__(parent)
         self.cap = cv2.VideoCapture(source)
         if not self.cap.isOpened():
             raise ValueError("Unable to open video source", source)
+
+        self._display_width = 0
+        self._display_height = 0
+        self.pack_propagate(False)
 
         # Ask backend for smaller frames to reduce work
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, VIDEO_WIDTH)
@@ -236,7 +299,7 @@ class VideoPanel(ctk.CTkFrame):
 
         self.label = ctk.CTkLabel(
             self, text="", width=VIDEO_WIDTH, height=VIDEO_HEIGHT)
-        self.label.pack(fill="both", expand=True, padx=10, pady=10)
+        self.label.pack(expand=True, padx=10, pady=10)
 
         # Worker thread state
         self._running = True
@@ -259,6 +322,24 @@ class VideoPanel(ctk.CTkFrame):
         self._reader_thread = threading.Thread(
             target=self._reader_loop, daemon=True)
         self._reader_thread.start()
+
+        self.set_display_size(display_width, display_height)
+
+    def get_display_size(self):
+        return self._display_width, self._display_height
+
+    def set_display_size(self, width: int, height: int):
+        width = max(1, int(round(width)))
+        height = max(1, int(round(height)))
+        if width == self._display_width and height == self._display_height:
+            return
+
+        self._display_width = width
+        self._display_height = height
+        self.configure(width=width + 20, height=height + 20)
+        self.label.configure(width=width, height=height)
+        # Force a redraw even when the video is paused.
+        self._drawn_ver = -1
 
     def set_paused(self, paused: bool):
         self._paused = paused
@@ -313,12 +394,38 @@ class VideoPanel(ctk.CTkFrame):
             rgb = self._latest_rgb
             ver = self._latest_ver
 
-        pil_img = Image.fromarray(rgb)
+        pil_img = self._resize_to_fill(Image.fromarray(rgb))
         # Use CTkImage to avoid HiDPI warning
         self._ctkimg = ctk.CTkImage(
-            light_image=pil_img, dark_image=pil_img, size=(VIDEO_WIDTH, VIDEO_HEIGHT))
+            light_image=pil_img,
+            dark_image=pil_img,
+            size=(self._display_width, self._display_height),
+        )
         self.label.configure(image=self._ctkimg, text="")
         self._drawn_ver = ver
+
+    def _resize_to_fill(self, image: Image.Image) -> Image.Image:
+        if image.width <= 0 or image.height <= 0:
+            return image
+
+        scale = max(
+            self._display_width / image.width,
+            self._display_height / image.height,
+        )
+        resized_width = max(1, int(round(image.width * scale)))
+        resized_height = max(1, int(round(image.height * scale)))
+        resampling = (
+            Image.Resampling.LANCZOS
+            if hasattr(Image, "Resampling")
+            else Image.LANCZOS
+        )
+        resized = image.resize((resized_width, resized_height), resampling)
+
+        left = max(0, (resized_width - self._display_width) // 2)
+        top = max(0, (resized_height - self._display_height) // 2)
+        right = left + self._display_width
+        bottom = top + self._display_height
+        return resized.crop((left, top, right, bottom))
 
     def release(self):
         self._running = False
@@ -361,29 +468,40 @@ class App(ctk.CTk):
         # Toast state
         self._toast_window = None
         self._toast_bind_id = None
+        self._left_panel_ratio = 1.0
+        self._right_panel_ratio = 1.0
+        self._panel_animation_job = None
+        self._last_connection_state = False
 
         self.sound_player = SoundPlayer(SOUND_FILE_PATH)
 
-        content = ctk.CTkFrame(self, fg_color=APP_BG_COLOR)
-        content.pack(padx=20, pady=20, fill="both", expand=True)
+        self.content = ctk.CTkFrame(self, fg_color=APP_BG_COLOR)
+        self.content.pack(padx=20, pady=20, fill="both", expand=True)
 
-        content.grid_columnconfigure(0, weight=1)
-        content.grid_columnconfigure(1, weight=1)
-        content.grid_rowconfigure(0, weight=1)
+        self.content.grid_columnconfigure(0, weight=1)
+        self.content.grid_columnconfigure(1, weight=0, minsize=VIDEO_WIDTH + 20)
+        self.content.grid_columnconfigure(2, weight=0, minsize=VIDEO_WIDTH + 20)
+        self.content.grid_columnconfigure(3, weight=1)
+        self.content.grid_rowconfigure(0, weight=1)
 
-        self.left_panel = VideoPanel(content, REFERENCE_VIDEO_PATH)
-        self.right_panel = VideoPanel(content, USER_CAMERA_INDEX)
+        self.left_panel = VideoPanel(self.content, REFERENCE_VIDEO_PATH)
+        self.right_panel = VideoPanel(self.content, USER_CAMERA_INDEX)
         # Webcam view is never paused
         self.right_panel.set_paused(False)
 
         self.left_panel.grid(
-            row=0, column=0, sticky="nsew", padx=(8, 4), pady=8)
+            row=0, column=1, padx=(8, 4), pady=8)
         self.right_panel.grid(
-            row=0, column=1, sticky="nsew", padx=(4, 8), pady=8)
+            row=0, column=2, padx=(4, 8), pady=8)
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.left_panel.set_paused(True)
+        self._apply_panel_proportion(
+            self._left_panel_ratio,
+            self._right_panel_ratio,
+            redraw=False,
+        )
 
         # Embedded Connection Bar at Bottom Center
         self.connection_bar = ctk.CTkFrame(
@@ -437,15 +555,93 @@ class App(ctk.CTk):
 
         self.after(250, self._poll_commands)
 
+    def _parse_panel_proportion(self, proportion: str):
+        parts = [part.strip() for part in proportion.split("/", 1)]
+        if len(parts) != 2:
+            return None
+
+        try:
+            left = float(parts[0])
+            right = float(parts[1])
+        except ValueError:
+            return None
+
+        if left <= 0 or right <= 0:
+            return None
+
+        return left, right
+
+    def _proportion_to_panel_sizes(self, left_ratio: float, right_ratio: float):
+        total_ratio = max(0.1, float(left_ratio) + float(right_ratio))
+        total_width = VIDEO_WIDTH * 2
+        left_width = int(round(total_width * (left_ratio / total_ratio)))
+        left_width = min(total_width - 1, max(1, left_width))
+        right_width = max(1, total_width - left_width)
+        return (
+            (left_width, VIDEO_HEIGHT),
+            (right_width, VIDEO_HEIGHT),
+        )
+
+    def _apply_panel_proportion(self, left_ratio: float, right_ratio: float, redraw: bool = True):
+        self._left_panel_ratio = left_ratio
+        self._right_panel_ratio = right_ratio
+
+        (left_width, left_height), (right_width, right_height) = (
+            self._proportion_to_panel_sizes(left_ratio, right_ratio)
+        )
+
+        self.left_panel.set_display_size(left_width, left_height)
+        self.right_panel.set_display_size(right_width, right_height)
+        self.content.grid_columnconfigure(1, minsize=left_width + 20)
+        self.content.grid_columnconfigure(2, minsize=right_width + 20)
+
+        if redraw:
+            self.left_panel.draw_latest()
+            self.right_panel.draw_latest()
+
+    def _animate_panel_proportion(self, left_ratio: float, right_ratio: float, duration_ms: int = 260, steps: int = 12):
+        if self._panel_animation_job is not None:
+            try:
+                self.after_cancel(self._panel_animation_job)
+            except Exception:
+                pass
+            self._panel_animation_job = None
+
+        start_left = self._left_panel_ratio
+        start_right = self._right_panel_ratio
+
+        def ease_in_out(t: float) -> float:
+            return 3 * t * t - 2 * t * t * t
+
+        def animate_step(step: int = 0):
+            progress = step / steps
+            eased = ease_in_out(progress)
+            current_left = start_left + (left_ratio - start_left) * eased
+            current_right = start_right + (right_ratio - start_right) * eased
+            self._apply_panel_proportion(current_left, current_right)
+
+            if step >= steps:
+                self._panel_animation_job = None
+                return
+
+            delay = max(1, duration_ms // steps)
+            self._panel_animation_job = self.after(
+                delay, lambda: animate_step(step + 1)
+            )
+
+        animate_step()
+
     def _handle_command(self, command: str):
         print("Handling command:", command)
 
         if command == "play_session":
             if self.left_panel._paused:
                 self.left_panel.set_paused(False)
+                _set_current_song_playing(True)
                 # self.sound_player.start()
             else:
                 self.left_panel.set_paused(True)
+                _set_current_song_playing(False)
                 # self.sound_player.stop()
         elif command == "prev_session":
             self._session_index -= 1
@@ -468,6 +664,16 @@ class App(ctk.CTk):
             song_idx = SONG_TO_INDEX[song_name]
             self._switch_session(song_idx)
 
+        elif command.startswith("change_proportion:"):
+            proportion = command.split(":", 1)[1].strip()
+            print("Received proportion:", proportion)
+            scales = self._parse_panel_proportion(proportion)
+            if scales is None:
+                print("Invalid proportion:", proportion)
+                return
+
+            self._animate_panel_proportion(*scales)
+
     def _switch_session(self, index: int):
         pass  # TODO: assume countdown upon new session
 
@@ -483,16 +689,30 @@ class App(ctk.CTk):
             self._sessions.append(chosen_session)
 
         new_path = self._sessions[index]
+        self._session_index = index
         print('Switching to session')
+        song_title = os.path.splitext(os.path.basename(new_path))[0]
+        _set_current_song(song_title, playing=False)
 
         session_parent = self.left_panel.master
+        current_width, current_height = self.left_panel.get_display_size()
         self.left_panel.release()
         self.left_panel.destroy()
 
-        self.left_panel = VideoPanel(session_parent, new_path)
+        self.left_panel = VideoPanel(
+            session_parent,
+            new_path,
+            display_width=current_width,
+            display_height=current_height,
+        )
         self.left_panel.grid(
-            row=0, column=0, sticky='nsew', padx=(8, 4), pady=8)
+            row=0, column=1, padx=(8, 4), pady=8)
         self.left_panel.set_paused(True)
+        self._apply_panel_proportion(
+            self._left_panel_ratio,
+            self._right_panel_ratio,
+            redraw=False,
+        )
         self.sound_player.stop()
 
     def _show_ip_popup(self):
@@ -537,18 +757,25 @@ class App(ctk.CTk):
             self.connection_bar.pack_forget()
 
     def _update_connection_toast(self):
-        if not is_connected:
+        currently_connected = is_connected
+
+        if not currently_connected:
             self._ensure_ip_toast()
-            self.left_panel.set_paused(True)
+            if self._last_connection_state:
+                self.left_panel.set_paused(True)
+                _set_current_song_playing(False)
             # self.sound_player.stop()
             if not self._popup_shown_this_session:
                 self._show_ip_popup()
 
         else:
             self._hide_ip_toast()
-            self.left_panel.set_paused(False)
+            if not self._last_connection_state:
+                self.left_panel.set_paused(False)
+                _set_current_song_playing(True)
             # self.sound_player.start()
             self._popup_shown_this_session = True
+        self._last_connection_state = currently_connected
         self.after(500, self._update_connection_toast)
     # ----- end toast -----
 

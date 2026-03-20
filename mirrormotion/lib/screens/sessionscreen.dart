@@ -1,5 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:typed_data';
+
+import 'package:audio_visualizer/audio_visualizer.dart';
 import 'package:audio_visualizer/visualizers/multi_wave_visualizer.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +12,6 @@ import 'package:flutter/services.dart';
 // import 'package:video_player/video_player.dart';
 import 'package:http/http.dart' as http;
 import 'package:mirrormotion/size_config.dart';
-import 'package:audio_visualizer/audio_visualizer.dart';
 import 'package:mirrormotion/services/data.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -73,14 +76,170 @@ class SessionScreen extends StatefulWidget {
 class _SessionScreenState extends State<SessionScreen> {
   bool isConnected = false;
   double _currentSliderValue = 0.0;
-  String? _sliderStatus;
-  VisualizerPlayer? audioPlayer;
+  bool _isDesktopPlaying = false;
+  bool _isFetchingStatus = false;
+  double _wavePhase = 0.0;
+  Timer? _statusTimer;
+  Timer? _waveTimer;
+  final PCMVisualizer _waveVisualizer = PCMVisualizer();
+  final Map<String, Map<String, dynamic>> _songsByTitle =
+      <String, Map<String, dynamic>>{};
+  String _currentSongTitle = 'Song Name';
+  String _currentSongArtist = 'Artist Name';
 
-  DataService dataService = DataService();
+  final DataService dataService = DataService();
 
-  Future<void> setupAudioVisualizer() async {
-    audioPlayer = VisualizerPlayer();
-    await audioPlayer!.initialize();
+  String _songKey(String value) {
+    return value.trim().toLowerCase();
+  }
+
+  void _seedSongInfoFromSelection() {
+    final title = widget.initialSongData?['title']?.toString().trim();
+    final artist = widget.initialSongData?['artist']?.toString().trim();
+
+    if (title != null && title.isNotEmpty) {
+      _currentSongTitle = title;
+    }
+    if (artist != null && artist.isNotEmpty) {
+      _currentSongArtist = artist;
+    }
+  }
+
+  Future<void> _loadSongLibrary() async {
+    try {
+      final songs = await dataService.getSongs();
+      for (final song in songs) {
+        final title = song['title']?.toString().trim();
+        if (title == null || title.isEmpty) {
+          continue;
+        }
+        _songsByTitle[_songKey(title)] = Map<String, dynamic>.from(song);
+      }
+
+      final knownArtist = _songsByTitle[_songKey(_currentSongTitle)]?['artist']
+          ?.toString()
+          .trim();
+      if (mounted && knownArtist != null && knownArtist.isNotEmpty) {
+        setState(() {
+          _currentSongArtist = knownArtist;
+        });
+      }
+    } catch (e) {
+      print('Error loading songs: $e');
+    }
+  }
+
+  String _resolveSongTitle(Map<String, dynamic> currentSong) {
+    final statusTitle = currentSong['title']?.toString().trim();
+    if (statusTitle != null && statusTitle.isNotEmpty) {
+      return statusTitle;
+    }
+    return _currentSongTitle;
+  }
+
+  String _resolveSongArtist(Map<String, dynamic> currentSong, String title) {
+    final statusArtist = currentSong['artist']?.toString().trim();
+    if (statusArtist != null && statusArtist.isNotEmpty) {
+      return statusArtist;
+    }
+
+    final knownArtist = _songsByTitle[_songKey(title)]?['artist']
+        ?.toString()
+        .trim();
+    if (knownArtist != null && knownArtist.isNotEmpty) {
+      return knownArtist;
+    }
+
+    return _currentSongArtist;
+  }
+
+  void _setWavePlaying(bool playing) {
+    if (playing) {
+      if (_waveTimer != null) {
+        return;
+      }
+      _feedWaveFrame();
+      _waveTimer = Timer.periodic(const Duration(milliseconds: 70), (_) {
+        _feedWaveFrame();
+      });
+      return;
+    }
+
+    _waveTimer?.cancel();
+    _waveTimer = null;
+    _waveVisualizer.reset();
+  }
+
+  void _feedWaveFrame() {
+    final pcm = Int16List(1024);
+    for (int i = 0; i < pcm.length; i++) {
+      final double wave =
+          math.sin(_wavePhase + i * 0.12) * 0.7 +
+          math.sin(_wavePhase * 0.55 + i * 0.05) * 0.3;
+      final double envelope =
+          0.55 + 0.45 * math.sin(_wavePhase * 0.4 + i * 0.01).abs();
+      final int amplitude = (wave * 18000 * envelope).round();
+      pcm[i] = amplitude.clamp(-32768, 32767).toInt();
+    }
+    _wavePhase += 0.32;
+    _waveVisualizer.feed(Uint8List.view(pcm.buffer));
+  }
+
+  Future<void> _syncDesktopStatus() async {
+    if (_isFetchingStatus || dataService.desktopAppUrl.isEmpty) {
+      if (dataService.desktopAppUrl.isEmpty) {
+        _setWavePlaying(false);
+      }
+      return;
+    }
+
+    _isFetchingStatus = true;
+    final url = Uri.parse('${dataService.desktopAppUrl}/status');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode != 200) {
+        if (mounted) {
+          setState(() {
+            isConnected = false;
+            _isDesktopPlaying = false;
+          });
+        }
+        _setWavePlaying(false);
+        return;
+      }
+
+      final payload = Map<String, dynamic>.from(
+        jsonDecode(response.body) as Map,
+      );
+      final connected = payload['connected'] == true;
+      final currentSong = payload['currentSong'] is Map
+          ? Map<String, dynamic>.from(payload['currentSong'] as Map)
+          : <String, dynamic>{};
+      final title = _resolveSongTitle(currentSong);
+      final artist = _resolveSongArtist(currentSong, title);
+      final isPlaying = connected && currentSong['playing'] == true;
+
+      if (mounted) {
+        setState(() {
+          isConnected = connected;
+          _isDesktopPlaying = isPlaying;
+          _currentSongTitle = title;
+          _currentSongArtist = artist;
+        });
+      }
+      _setWavePlaying(isPlaying);
+    } catch (e) {
+      print('Error checking connection: $e');
+      if (mounted) {
+        setState(() {
+          isConnected = false;
+          _isDesktopPlaying = false;
+        });
+      }
+      _setWavePlaying(false);
+    } finally {
+      _isFetchingStatus = false;
+    }
   }
 
   Future<void> sendCommandToDesktop(String command) async {
@@ -93,6 +252,9 @@ class _SessionScreenState extends State<SessionScreen> {
       );
       if (response.statusCode == 200) {
         print('Command sent successfully: $command');
+        Timer(const Duration(milliseconds: 300), () {
+          _syncDesktopStatus();
+        });
       } else {
         print('Failed to send command. Status code: ${response.statusCode}');
       }
@@ -101,26 +263,11 @@ class _SessionScreenState extends State<SessionScreen> {
     }
   }
 
-  Future<bool> checkConnection() async {
-    final url = Uri.parse('${dataService.desktopAppUrl}/status');
-    try {
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        print('Connection is active');
-        return true;
-      } else {
-        print('Connection inactive. Status code: ${response.statusCode}');
-        return false;
-      }
-    } catch (e) {
-      // print('Error checking connection: $e');
-      return false;
-    }
-  }
-
   @override
   void initState() {
     super.initState();
+    _seedSongInfoFromSelection();
+    _loadSongLibrary();
 
     if (!isConnected) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -133,19 +280,23 @@ class _SessionScreenState extends State<SessionScreen> {
         );
         if (mounted && (connected ?? false)) {
           setState(() => isConnected = true);
+          _syncDesktopStatus();
         }
       });
     }
 
-    // Setup periodic connection check
-    Timer.periodic(const Duration(milliseconds: 500), (timer) async {
-      final connected = await checkConnection();
-      if (mounted) {
-        setState(() {
-          isConnected = connected;
-        });
-      }
+    _statusTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      _syncDesktopStatus();
     });
+    _syncDesktopStatus();
+  }
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    _waveTimer?.cancel();
+    _waveVisualizer.dispose();
+    super.dispose();
   }
 
   @override
@@ -153,7 +304,27 @@ class _SessionScreenState extends State<SessionScreen> {
     return Scaffold(
       appBar: AppBar(
         actions: [
-          IconButton(icon: const Icon(Icons.palette_rounded), onPressed: () {}),
+          /*
+          Purpose: send command to the desktop app to:
+          - change the proportion between the reference and user view (e.g. 70/30, 50/50, 30/70)
+          - aspect ratio must be preserved so shrinking one view will enlarge the other view (handled on the desktop app, here we just issue the command)
+           */
+          IconButton(
+            icon: const Icon(Icons.palette_rounded),
+            onPressed: () {
+              // Open a Dialog with the three proportion options (70/30, 50/50, 30/70)
+              showDialog(
+                context: context,
+                builder: (BuildContext context) {
+                  return ProportionPopUp(
+                    onProportionSelected: (value) {
+                      sendCommandToDesktop("change_proportion:$value");
+                    },
+                  );
+                },
+              );
+            },
+          ),
         ],
       ),
       body: SafeArea(
@@ -163,30 +334,77 @@ class _SessionScreenState extends State<SessionScreen> {
             children: [
               SizedBox(
                 width: SizeConfig.horizontal! * 80,
-                height: SizeConfig.vertical! * 15,
+                height: SizeConfig.vertical! * 18,
                 child: Card(
+                  color: const Color.fromARGB(255, 246, 233, 230),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(22),
+                  ),
                   child: Padding(
-                    padding: const EdgeInsets.all(8.0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18.0,
+                      vertical: 16.0,
+                    ),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (audioPlayer != null)
-                          ListenableBuilder(
-                            listenable: audioPlayer!,
-                            builder: (context, child) {
-                              return MultiWaveVisualizer(
-                                input: audioPlayer!.value.waveform,
-                                backgroundColor: Colors.black,
-                                color: Colors.greenAccent,
-                                gap: 2,
-                              );
-                            },
+                        SizedBox(
+                          height: SizeConfig.vertical! * 4,
+                          width: double.infinity,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: DecoratedBox(
+                              decoration: const BoxDecoration(
+                                color: Color.fromARGB(45, 139, 125, 125),
+                              ),
+                              child: ListenableBuilder(
+                                listenable: _waveVisualizer,
+                                builder: (context, child) {
+                                  return MultiWaveVisualizer(
+                                    input: _waveVisualizer.value.waveform,
+                                    backgroundColor: Colors.transparent,
+                                    color: _isDesktopPlaying
+                                        ? const Color(0xFF5E7478)
+                                        : const Color(0xFFB7AEB1),
+                                    gap: 2,
+                                  );
+                                },
+                              ),
+                            ),
                           ),
+                        ),
+                        const SizedBox(height: 14),
                         Text(
-                          "Song Name - Artist Name",
+                          _currentSongTitle,
                           style: TextStyle(
                             fontSize: SizeConfig.horizontal! * 5,
                             fontWeight: FontWeight.bold,
+                            color: const Color(0xFF312A2D),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _currentSongArtist,
+                          style: TextStyle(
+                            fontSize: SizeConfig.horizontal! * 3.8,
+                            color: const Color(0xFF6A5E63),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const Spacer(),
+                        Text(
+                          _isDesktopPlaying
+                              ? 'Playing on desktop companion'
+                              : (isConnected
+                                    ? 'Paused on desktop companion'
+                                    : 'Waiting for desktop companion'),
+                          style: TextStyle(
+                            fontSize: SizeConfig.horizontal! * 3,
+                            color: const Color(0xFF8B7D7D),
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -254,15 +472,10 @@ class _SessionScreenState extends State<SessionScreen> {
                       activeColor: Color.fromARGB(255, 139, 129, 129),
                       thumbColor: Color.fromARGB(255, 139, 129, 129),
                       // This is called when sliding is started.
-                      onChangeStart: (double value) {
-                        setState(() {
-                          _sliderStatus = 'Sliding';
-                        });
-                      },
+                      onChangeStart: (double value) {},
                       // This is called when sliding has ended.
                       onChangeEnd: (double value) {
                         setState(() {
-                          _sliderStatus = 'Finished sliding';
                           sendCommandToDesktop("set_volume:$value");
                         });
                       },
@@ -521,10 +734,10 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
       if (resp.statusCode == 200) {
         if (!mounted) return;
         dataService.desktopAppUrl = "http://${host[0]}";
-        sendInitialSongRequest().then((value) {
-          print("initial request $value");
-          Navigator.of(context).pop(true); // success; parent marks connected
-        });
+        final initialRequestOk = await sendInitialSongRequest();
+        print("initial request $initialRequestOk");
+        if (!mounted) return;
+        Navigator.of(context).pop(true); // success; parent marks connected
       } else {
         // Attempt the altHost
         final altUri = Uri.parse("http://${host[1]}/connect");
@@ -538,10 +751,10 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
         if (altResp.statusCode == 200) {
           if (!mounted) return;
           dataService.desktopAppUrl = "http://${host[1]}";
-          sendInitialSongRequest().then((value) {
-            print("initial request $value");
-            Navigator.of(context).pop(true); // success; parent marks connected
-          });
+          final initialRequestOk = await sendInitialSongRequest();
+          print("initial request $initialRequestOk");
+          if (!mounted) return;
+          Navigator.of(context).pop(true); // success; parent marks connected
           return;
         }
 
@@ -562,10 +775,10 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
         if (!mounted) return;
 
         dataService.desktopAppUrl = "http://${host[1]}";
-        sendInitialSongRequest().then((value) {
-          print("initial request $value");
-          Navigator.of(context).pop(true); // success; parent marks connected
-        });
+        final initialRequestOk = await sendInitialSongRequest();
+        print("initial request $initialRequestOk");
+        if (!mounted) return;
+        Navigator.of(context).pop(true); // success; parent marks connected
         return;
       }
 
@@ -665,6 +878,51 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
           child: const Text("Connect"),
         ),
       ],
+    );
+  }
+}
+
+// Proportion Dialog (triggered by palette icon in the app bar)
+class ProportionPopUp extends StatelessWidget {
+  const ProportionPopUp({super.key, this.onProportionSelected});
+  final Function(String)? onProportionSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text("Select Proportion"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: const Text("70% Instructor / 30% User"),
+            onTap: () {
+              if (onProportionSelected != null) {
+                onProportionSelected!("70/30");
+              }
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            title: const Text("50% Instructor / 50% User"),
+            onTap: () {
+              if (onProportionSelected != null) {
+                onProportionSelected!("50/50");
+              }
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            title: const Text("30% Instructor / 70% User"),
+            onTap: () {
+              if (onProportionSelected != null) {
+                onProportionSelected!("30/70");
+              }
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
     );
   }
 }

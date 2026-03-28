@@ -32,6 +32,15 @@ class WeeklyUsagePoint {
   final int goalMinutes;
 }
 
+class WeeklyUsageSummary {
+  const WeeklyUsageSummary({required this.weekStart, required this.points});
+
+  final DateTime weekStart;
+  final List<WeeklyUsagePoint> points;
+
+  DateTime get weekEnd => weekStart.add(const Duration(days: 6));
+}
+
 class _GoalChange {
   const _GoalChange({required this.changedAt, required this.goalMinutes});
 
@@ -98,28 +107,26 @@ class DataService extends ChangeNotifier {
   }
 
   List<WeeklyUsagePoint> getCurrentWeekUsage({DateTime? now}) {
-    final DateTime reference = (now ?? DateTime.now()).toLocal();
-    final DateTime today = DateTime(
-      reference.year,
-      reference.month,
-      reference.day,
-    );
-    final DateTime weekStart = today.subtract(
-      Duration(days: today.weekday - 1),
-    );
-    final DateTime weekEndExclusive = weekStart.add(const Duration(days: 7));
+    return getWorkoutHistory(
+      now: now,
+      minimumWeeks: 1,
+      maximumWeeks: 1,
+    ).first.points;
+  }
 
+  List<WeeklyUsageSummary> getWorkoutHistory({
+    DateTime? now,
+    int minimumWeeks = 3,
+    int? maximumWeeks,
+  }) {
+    final int safeMinimumWeeks = math.max(1, minimumWeeks);
+    final DateTime reference = (now ?? DateTime.now()).toLocal();
+    final DateTime today = _startOfDay(reference);
+    final DateTime currentWeekStart = _startOfWeek(today);
     final int defaultGoal = math.max(0, _asInt(_userData['dailyMinutes'], 40));
     final List<_GoalChange> changes = _parseGoalChanges();
-    final List<int> goals = List<int>.generate(
-      7,
-      (index) => _goalForDay(
-        weekStart.add(Duration(days: index)),
-        defaultGoal,
-        changes,
-      ),
-    );
-    final List<int> minutes = List<int>.filled(7, 0);
+    final Map<DateTime, List<int>> minutesByWeekStart = <DateTime, List<int>>{};
+    final List<DateTime> sessionDays = <DateTime>[];
 
     final Map<String, dynamic>? sessionHistory = _asMap(
       _userData['sessionHistory'],
@@ -136,31 +143,130 @@ class DataService extends ChangeNotifier {
         if (start == null || end == null || !end.isAfter(start)) {
           continue;
         }
-        if (start.isBefore(weekStart) || !start.isBefore(weekEndExclusive)) {
-          continue;
-        }
 
         final int sessionMinutes = math.max(0, end.difference(start).inMinutes);
-        final int index = start.weekday - 1;
-        minutes[index] += sessionMinutes;
+        final DateTime sessionDay = _startOfDay(start);
+        sessionDays.add(sessionDay);
+        final DateTime sessionWeekStart = _startOfWeek(sessionDay);
+        final List<int> weeklyMinutes = minutesByWeekStart.putIfAbsent(
+          sessionWeekStart,
+          () => List<int>.filled(7, 0),
+        );
+        final int index = sessionDay.weekday - 1;
+        weeklyMinutes[index] += sessionMinutes;
       }
     }
 
     final ProgressSnapshot todayProgress = getTodayProgressSnapshot(
       now: reference,
     );
-    final int todayIndex = reference.weekday - 1;
-    minutes[todayIndex] = math.max(
-      minutes[todayIndex],
+    final List<int> currentWeekMinutes = minutesByWeekStart.putIfAbsent(
+      currentWeekStart,
+      () => List<int>.filled(7, 0),
+    );
+    final int todayIndex = today.weekday - 1;
+    currentWeekMinutes[todayIndex] = math.max(
+      currentWeekMinutes[todayIndex],
       todayProgress.currentMinutes,
     );
 
+    final DateTime historyStart = _resolveHistoryStart(
+      currentWeekStart: currentWeekStart,
+      sessionDays: sessionDays,
+      changes: changes,
+    );
+
+    final List<DateTime> orderedWeekStarts = <DateTime>[];
+    for (
+      DateTime weekStart = currentWeekStart;
+      !weekStart.isBefore(historyStart);
+      weekStart = weekStart.subtract(const Duration(days: 7))
+    ) {
+      orderedWeekStarts.add(weekStart);
+    }
+
+    while (orderedWeekStarts.length < safeMinimumWeeks) {
+      orderedWeekStarts.add(
+        orderedWeekStarts.last.subtract(const Duration(days: 7)),
+      );
+    }
+
+    Iterable<DateTime> visibleWeekStarts = orderedWeekStarts;
+    if (maximumWeeks != null) {
+      final int safeMaximumWeeks = math.max(safeMinimumWeeks, maximumWeeks);
+      visibleWeekStarts = visibleWeekStarts.take(safeMaximumWeeks);
+    }
+
+    return visibleWeekStarts.map((DateTime weekStart) {
+      final List<int> minutes =
+          minutesByWeekStart[weekStart] ?? List<int>.filled(7, 0);
+
+      return WeeklyUsageSummary(
+        weekStart: weekStart,
+        points: _buildWeeklyUsagePoints(
+          weekStart,
+          minutes,
+          defaultGoal,
+          changes,
+        ),
+      );
+    }).toList();
+  }
+
+  DateTime _resolveHistoryStart({
+    required DateTime currentWeekStart,
+    required List<DateTime> sessionDays,
+    required List<_GoalChange> changes,
+  }) {
+    DateTime earliestDay = currentWeekStart;
+
+    final DateTime? createdAt = _parseDateTime(_userData['createdAt']);
+    if (createdAt != null) {
+      earliestDay = _startOfDay(createdAt);
+    }
+
+    if (changes.isNotEmpty) {
+      final DateTime earliestGoalChange = _startOfDay(changes.first.changedAt);
+      if (earliestGoalChange.isBefore(earliestDay)) {
+        earliestDay = earliestGoalChange;
+      }
+    }
+
+    for (final DateTime sessionDay in sessionDays) {
+      if (sessionDay.isBefore(earliestDay)) {
+        earliestDay = sessionDay;
+      }
+    }
+
+    return _startOfWeek(earliestDay);
+  }
+
+  DateTime _startOfDay(DateTime value) {
+    final DateTime localValue = value.toLocal();
+    return DateTime(localValue.year, localValue.month, localValue.day);
+  }
+
+  DateTime _startOfWeek(DateTime value) {
+    final DateTime day = _startOfDay(value);
+    return day.subtract(Duration(days: day.weekday - 1));
+  }
+
+  List<WeeklyUsagePoint> _buildWeeklyUsagePoints(
+    DateTime weekStart,
+    List<int> minutes,
+    int defaultGoal,
+    List<_GoalChange> changes,
+  ) {
     return List<WeeklyUsagePoint>.generate(
       7,
-      (index) => WeeklyUsagePoint(
+      (int index) => WeeklyUsagePoint(
         weekdayIndex: index + 1,
         minutes: minutes[index],
-        goalMinutes: goals[index],
+        goalMinutes: _goalForDay(
+          weekStart.add(Duration(days: index)),
+          defaultGoal,
+          changes,
+        ),
       ),
     );
   }

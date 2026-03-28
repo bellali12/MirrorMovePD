@@ -5,7 +5,26 @@ import 'package:flutter/material.dart';
 import 'package:mirrormotion/services/data.dart';
 
 class BarChartWidget extends StatefulWidget {
-  const BarChartWidget({super.key});
+  const BarChartWidget({
+    super.key,
+    this.weeklyData,
+    this.barColor = Colors.white,
+    this.goalHitBarColor = const Color.fromARGB(255, 88, 198, 150),
+    this.goalBarColor = const Color.fromARGB(255, 109, 125, 131),
+    this.labelColor = Colors.white,
+    this.tooltipColor = Colors.blueGrey,
+    this.barWidth = 22,
+    this.labelFontSize = 14,
+  });
+
+  final List<WeeklyUsagePoint>? weeklyData;
+  final Color barColor;
+  final Color goalHitBarColor;
+  final Color goalBarColor;
+  final Color labelColor;
+  final Color tooltipColor;
+  final double barWidth;
+  final double labelFontSize;
 
   @override
   State<BarChartWidget> createState() => _BarChartWidgetState();
@@ -13,51 +32,32 @@ class BarChartWidget extends StatefulWidget {
 
 class _BarChartWidgetState extends State<BarChartWidget> {
   int touchedIndex = -1;
-  final Color barColor = Colors.white;
-  final Color goalBarColor = const Color.fromARGB(255, 109, 125, 131);
   final Duration animDuration = const Duration(milliseconds: 250);
-  final DataService dataService = DataService();
-
-  @override
-  void initState() {
-    super.initState();
-    dataService.addListener(_onUserDataChanged);
-  }
-
-  void _onUserDataChanged() {
-    if (!mounted) {
-      return;
-    }
-    setState(() {});
-  }
-
-  @override
-  void dispose() {
-    dataService.removeListener(_onUserDataChanged);
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
-    final List<WeeklyUsagePoint> weeklyData = dataService.getCurrentWeekUsage();
-    return BarChart(mainBarData(weeklyData), duration: animDuration);
+    final List<WeeklyUsagePoint> weeklyData =
+        widget.weeklyData ?? DataService().getCurrentWeekUsage();
+    return BarChart(_mainBarData(weeklyData), duration: animDuration);
   }
 
-  BarChartGroupData makeGroupData(
+  BarChartGroupData _makeGroupData(
     int x,
     WeeklyUsagePoint point, {
     bool isTouched = false,
-    double width = 22,
     List<int> showTooltips = const <int>[],
   }) {
     final bool goalHit =
         point.goalMinutes > 0 && point.minutes >= point.goalMinutes;
     final Color resolvedBarColor = goalHit
-        ? const Color.fromARGB(255, 88, 198, 150)
-        : barColor;
+        ? widget.goalHitBarColor
+        : widget.barColor;
     final double usageY = point.minutes.toDouble();
     final double goalY = math.max(usageY, point.goalMinutes.toDouble());
-    final double adjustedWidth = isTouched ? width + 2 : width;
+    final double adjustedWidth = isTouched
+        ? widget.barWidth + 2
+        : widget.barWidth;
+    final BorderRadius rodRadius = BorderRadius.circular(adjustedWidth / 2);
 
     return BarChartGroupData(
       x: x,
@@ -66,11 +66,12 @@ class _BarChartWidgetState extends State<BarChartWidget> {
           toY: usageY,
           color: resolvedBarColor,
           width: adjustedWidth,
+          borderRadius: rodRadius,
           borderSide: BorderSide.none,
           backDrawRodData: BackgroundBarChartRodData(
             show: true,
             toY: goalY,
-            color: goalBarColor,
+            color: widget.goalBarColor,
           ),
         ),
       ],
@@ -78,14 +79,14 @@ class _BarChartWidgetState extends State<BarChartWidget> {
     );
   }
 
-  List<BarChartGroupData> showingGroups(List<WeeklyUsagePoint> weeklyData) {
+  List<BarChartGroupData> _showingGroups(List<WeeklyUsagePoint> weeklyData) {
     return List<BarChartGroupData>.generate(7, (int index) {
       final WeeklyUsagePoint point = weeklyData[index];
-      return makeGroupData(index, point, isTouched: index == touchedIndex);
+      return _makeGroupData(index, point, isTouched: index == touchedIndex);
     });
   }
 
-  BarChartData mainBarData(List<WeeklyUsagePoint> weeklyData) {
+  BarChartData _mainBarData(List<WeeklyUsagePoint> weeklyData) {
     final double maxUsageOrGoal = weeklyData
         .map<double>(
           (WeeklyUsagePoint point) =>
@@ -98,7 +99,7 @@ class _BarChartWidgetState extends State<BarChartWidget> {
       backgroundColor: Colors.transparent,
       barTouchData: BarTouchData(
         touchTooltipData: BarTouchTooltipData(
-          getTooltipColor: (_) => Colors.blueGrey,
+          getTooltipColor: (_) => widget.tooltipColor,
           tooltipHorizontalAlignment: FLHorizontalAlignment.right,
           tooltipMargin: -10,
           getTooltipItem:
@@ -152,14 +153,14 @@ class _BarChartWidgetState extends State<BarChartWidget> {
         bottomTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
-            getTitlesWidget: getTitles,
+            getTitlesWidget: _getTitles,
             reservedSize: 38,
           ),
         ),
         leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
       borderData: FlBorderData(show: false),
-      barGroups: showingGroups(weeklyData),
+      barGroups: _showingGroups(weeklyData),
       gridData: const FlGridData(show: false),
     );
   }
@@ -185,37 +186,38 @@ class _BarChartWidgetState extends State<BarChartWidget> {
     }
   }
 
-  Widget getTitles(double value, TitleMeta meta) {
-    const TextStyle style = TextStyle(
-      color: Colors.white,
+  Widget _getTitles(double value, TitleMeta meta) {
+    final TextStyle style = TextStyle(
+      color: widget.labelColor,
       fontWeight: FontWeight.bold,
-      fontSize: 14,
+      fontSize: widget.labelFontSize,
     );
+
     Widget text;
     switch (value.toInt()) {
       case 0:
-        text = const Text('M', style: style);
+        text = Text('M', style: style);
         break;
       case 1:
-        text = const Text('T', style: style);
+        text = Text('T', style: style);
         break;
       case 2:
-        text = const Text('W', style: style);
+        text = Text('W', style: style);
         break;
       case 3:
-        text = const Text('T', style: style);
+        text = Text('T', style: style);
         break;
       case 4:
-        text = const Text('F', style: style);
+        text = Text('F', style: style);
         break;
       case 5:
-        text = const Text('S', style: style);
+        text = Text('S', style: style);
         break;
       case 6:
-        text = const Text('S', style: style);
+        text = Text('S', style: style);
         break;
       default:
-        text = const Text('', style: style);
+        text = Text('', style: style);
         break;
     }
     return SideTitleWidget(meta: meta, space: 16, child: text);

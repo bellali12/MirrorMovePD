@@ -32,6 +32,7 @@ class Auth {
           .doc(FirebaseAuth.instance.currentUser?.uid)
           .set({
             'name': email.split('@').first,
+            'createdAt': Timestamp.now(),
             'dailyMinutes': defaultDailyMinutes,
             'goalChanges': {nowEpochSeconds.toString(): defaultDailyMinutes},
             'progress': {'currentMinutes': 0, 'lastUpdated': Timestamp.now()},

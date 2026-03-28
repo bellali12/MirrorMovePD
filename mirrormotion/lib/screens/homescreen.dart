@@ -146,7 +146,12 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                             TextButton(
-                              onPressed: () {},
+                              onPressed: () {
+                                Navigator.pushNamed(
+                                  context,
+                                  '/workout-history',
+                                );
+                              },
                               child: const Text("See All"),
                             ),
                           ],

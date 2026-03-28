@@ -3,8 +3,6 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:audio_visualizer/audio_visualizer.dart';
-import 'package:audio_visualizer/visualizers/multi_wave_visualizer.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 // import 'package:chewie/chewie.dart';
@@ -570,6 +568,118 @@ class _SessionScreenState extends State<SessionScreen> {
                 size: 30,
               ),
             ),
+    );
+  }
+}
+
+class PCMVisualizer extends ChangeNotifier {
+  PCMVisualizer({this.barCount = 28})
+    : value = WaveformFrame(List<double>.filled(barCount, 0));
+
+  final int barCount;
+  WaveformFrame value;
+
+  void feed(Uint8List bytes) {
+    final Int16List pcm = Int16List.view(
+      bytes.buffer,
+      bytes.offsetInBytes,
+      bytes.lengthInBytes ~/ 2,
+    );
+    if (pcm.isEmpty) {
+      reset();
+      return;
+    }
+
+    final int bucketSize = math.max(1, pcm.length ~/ barCount);
+    final List<double> waveform = List<double>.generate(barCount, (int index) {
+      final int start = index * bucketSize;
+      if (start >= pcm.length) {
+        return 0;
+      }
+
+      final int end = math.min(pcm.length, start + bucketSize);
+      double total = 0;
+      for (int i = start; i < end; i++) {
+        total += pcm[i].abs();
+      }
+
+      final double average = total / (end - start);
+      return (average / 32768.0).clamp(0.04, 1.0);
+    });
+
+    value = WaveformFrame(waveform);
+    notifyListeners();
+  }
+
+  void reset() {
+    value = WaveformFrame(List<double>.filled(barCount, 0));
+    notifyListeners();
+  }
+}
+
+class WaveformFrame {
+  const WaveformFrame(this.waveform);
+
+  final List<double> waveform;
+}
+
+class MultiWaveVisualizer extends StatelessWidget {
+  const MultiWaveVisualizer({
+    super.key,
+    required this.input,
+    required this.backgroundColor,
+    required this.color,
+    this.gap = 2,
+  });
+
+  final List<double> input;
+  final Color backgroundColor;
+  final Color color;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<double> bars = input.isEmpty
+        ? List<double>.filled(28, 0)
+        : input;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(color: backgroundColor),
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final double maxWidth = constraints.maxWidth;
+          final double totalGap = gap * (bars.length - 1);
+          final double barWidth = math.max(
+            2,
+            (maxWidth - totalGap) / bars.length,
+          );
+
+          return Align(
+            alignment: Alignment.bottomLeft,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (int index = 0; index < bars.length; index++) ...[
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 120),
+                    curve: Curves.easeOut,
+                    width: barWidth,
+                    height: math.max(
+                      4,
+                      constraints.maxHeight * bars[index].clamp(0.0, 1.0),
+                    ),
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(barWidth / 2),
+                    ),
+                  ),
+                  if (index != bars.length - 1) SizedBox(width: gap),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }

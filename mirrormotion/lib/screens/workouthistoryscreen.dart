@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mirrormotion/components/chart.dart';
 import 'package:mirrormotion/services/data.dart';
 
@@ -82,8 +81,9 @@ class _WorkoutHistoryScreenState extends State<WorkoutHistoryScreen> {
                 children: [
                   Text(
                     'Workout History',
-                    style: GoogleFonts.poppins(
+                    style: const TextStyle(
                       color: Colors.white,
+                      fontFamily: 'Poppins',
                       fontSize: 34,
                       fontWeight: FontWeight.w700,
                     ),
@@ -121,8 +121,9 @@ class _WorkoutHistoryScreenState extends State<WorkoutHistoryScreen> {
                           if (hasMore) ...[
                             Text(
                               'Scroll for older weeks',
-                              style: GoogleFonts.poppins(
-                                color: const Color(0xCCFFFFFF),
+                              style: const TextStyle(
+                                color: Color(0xCCFFFFFF),
+                                fontFamily: 'Poppins',
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -156,8 +157,9 @@ class _WorkoutHistoryEntry extends StatelessWidget {
           width: 122,
           child: Text(
             _formatDateRange(summary.weekStart, summary.weekEnd),
-            style: GoogleFonts.poppins(
+            style: const TextStyle(
               color: Colors.white,
+              fontFamily: 'Poppins',
               fontSize: 18,
               fontWeight: FontWeight.w700,
               height: 1.15,

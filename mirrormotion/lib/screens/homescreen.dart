@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mirrormotion/components/chart.dart';
 import 'package:mirrormotion/size_config.dart';
 import 'package:mirrormotion/screens/sessionscreen.dart';
@@ -97,8 +96,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             Text(
                               'GOOD MORNING',
-                              style: GoogleFonts.poppins(
+                              style: const TextStyle(
                                 color: Color(0xFFf7d9d9),
+                                fontFamily: 'Poppins',
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -139,8 +139,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             Text(
                               "Workout Duration",
-                              style: GoogleFonts.poppins(
+                              style: const TextStyle(
                                 color: Colors.white,
+                                fontFamily: 'Poppins',
                                 fontWeight: FontWeight.bold,
                                 fontSize: 22,
                               ),
@@ -165,8 +166,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 children: [
                                   Text(
                                     "${progressSnapshot.currentMinutes}/${progressSnapshot.goalMinutes} mins",
-                                    style: GoogleFonts.poppins(
+                                    style: const TextStyle(
                                       color: Color.fromARGB(255, 255, 211, 211),
+                                      fontFamily: 'Poppins',
                                       fontSize: 20,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -206,8 +208,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     Text(
                       "Daily Dance Workout",
-                      style: GoogleFonts.poppins(
+                      style: const TextStyle(
                         color: Color.fromARGB(255, 255, 255, 255),
+                        fontFamily: 'Poppins',
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -315,7 +318,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   Text(
                                                     availableSongs[index]['title'],
                                                     textAlign: TextAlign.left,
-                                                    style: GoogleFonts.poppins(
+                                                    style: const TextStyle(
+                                                      fontFamily: 'Poppins',
                                                       fontWeight:
                                                           FontWeight.bold,
                                                     ),

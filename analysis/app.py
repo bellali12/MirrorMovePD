@@ -6,10 +6,12 @@ import customtkinter as ctk
 from PIL import Image, ImageTk
 import cv2
 import mediapipe as mp
+from mediapipe.framework.formats import landmark_pb2
 import numpy as np
 import threading
 import time
 import os
+import math
 import simpleaudio as sa
 import queue
 import random
@@ -88,6 +90,350 @@ current_song_state = {
     "playing": False,
 }
 
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
+
+POSE_FACE_IDX = set(range(1, 11))
+POSE_COMPARISON_IDX = (0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28)
+POSE_REQUIRED_IDX = (0, 11, 12, 23, 24, 25, 26)
+POSE_VISIBILITY_THRESHOLD = 0.45
+POSE_ANALYSIS_FRAME_INTERVAL = 2
+POSE_MATCH_THRESHOLD = 0.72
+POSE_TOLERANCE_BY_LEVEL = {
+    1: 0.18,
+    2: 0.165,
+    3: 0.155,
+    4: 0.145,
+    5: 0.135,
+    6: 0.125,
+    7: 0.115,
+    8: 0.105,
+    9: 0.095,
+}
+
+
+def _copy_landmarks(landmarks):
+    if not landmarks:
+        return None
+
+    copied = []
+    for landmark in landmarks:
+        copied.append(
+            landmark_pb2.NormalizedLandmark(
+                x=float(landmark.x),
+                y=float(landmark.y),
+                z=float(landmark.z),
+                visibility=float(getattr(landmark, "visibility", 0.0)),
+            )
+        )
+    return copied
+
+
+def _is_landmark_visible(landmarks, index: int, threshold: float = POSE_VISIBILITY_THRESHOLD) -> bool:
+    if not landmarks or index >= len(landmarks):
+        return False
+    return float(getattr(landmarks[index], "visibility", 0.0)) >= threshold
+
+
+def _average_landmarks_xy(landmarks, indices):
+    if not landmarks:
+        return None
+
+    visible_points = []
+    for index in indices:
+        if _is_landmark_visible(landmarks, index):
+            landmark = landmarks[index]
+            visible_points.append((landmark.x, landmark.y))
+
+    if not visible_points:
+        return None
+
+    xs, ys = zip(*visible_points)
+    return (sum(xs) / len(xs), sum(ys) / len(ys))
+
+
+def _build_drawable_landmarks(landmarks):
+    if not landmarks:
+        return None
+
+    drawn_landmarks = []
+    for index, landmark in enumerate(landmarks):
+        visibility = float(getattr(landmark, "visibility", 0.0))
+        if index in POSE_FACE_IDX:
+            visibility = 0.0
+
+        drawn_landmarks.append(
+            landmark_pb2.NormalizedLandmark(
+                x=float(landmark.x),
+                y=float(landmark.y),
+                z=float(landmark.z),
+                visibility=visibility,
+            )
+        )
+
+    return landmark_pb2.NormalizedLandmarkList(landmark=drawn_landmarks)
+
+
+def _draw_pose_landmarks(frame, landmarks):
+    drawable_landmarks = _build_drawable_landmarks(landmarks)
+    if drawable_landmarks is None:
+        return frame
+
+    landmark_spec = mp_drawing.DrawingSpec(
+        color=(255, 243, 239), thickness=2, circle_radius=2
+    )
+    connection_spec = mp_drawing.DrawingSpec(
+        color=(112, 208, 255), thickness=4, circle_radius=2
+    )
+    mp_drawing.draw_landmarks(
+        frame,
+        drawable_landmarks,
+        mp_pose.POSE_CONNECTIONS,
+        landmark_drawing_spec=landmark_spec,
+        connection_drawing_spec=connection_spec,
+    )
+    return frame
+
+
+def _calculate_pose_distance(reference_landmarks, current_landmarks):
+    if not reference_landmarks or not current_landmarks:
+        return None
+
+    for index in POSE_REQUIRED_IDX:
+        if not _is_landmark_visible(reference_landmarks, index):
+            return None
+        if not _is_landmark_visible(current_landmarks, index):
+            return None
+
+    ref_knees = _average_landmarks_xy(reference_landmarks, (25, 26))
+    curr_knees = _average_landmarks_xy(current_landmarks, (25, 26))
+    ref_torso = _average_landmarks_xy(reference_landmarks, (11, 12, 23, 24))
+    curr_torso = _average_landmarks_xy(current_landmarks, (11, 12, 23, 24))
+    if ref_knees is None or curr_knees is None or ref_torso is None or curr_torso is None:
+        return None
+
+    ref_nose = reference_landmarks[0]
+    curr_nose = current_landmarks[0]
+    ref_scale = math.hypot(ref_nose.x - ref_knees[0], ref_nose.y - ref_knees[1])
+    curr_scale = math.hypot(curr_nose.x - curr_knees[0], curr_nose.y - curr_knees[1])
+    if ref_scale <= 1e-4 or curr_scale <= 1e-4:
+        return None
+
+    comparison_scale = curr_scale / ref_scale
+    total_distance = 0.0
+    compared_landmarks = 0
+    for index in POSE_COMPARISON_IDX:
+        if not _is_landmark_visible(reference_landmarks, index):
+            continue
+        if not _is_landmark_visible(current_landmarks, index):
+            continue
+
+        reference_landmark = reference_landmarks[index]
+        current_landmark = current_landmarks[index]
+        adjusted_ref_x = (
+            (reference_landmark.x - ref_torso[0]) * comparison_scale + curr_torso[0]
+        )
+        adjusted_ref_y = (
+            (reference_landmark.y - ref_torso[1]) * comparison_scale + curr_torso[1]
+        )
+        total_distance += math.hypot(
+            adjusted_ref_x - current_landmark.x,
+            adjusted_ref_y - current_landmark.y,
+        )
+        compared_landmarks += 1
+
+    if compared_landmarks < 4:
+        return None
+
+    return total_distance / compared_landmarks
+
+
+class PoseSessionAnalyzer:
+    def __init__(self, song_title: str, difficulty=None):
+        self._lock = threading.Lock()
+        self._difficulty = int(difficulty or 1)
+        self._session_id = ""
+        self._song_title = ""
+        self._session_started_at = None
+        self._active_started_at = None
+        self._active_seconds_accumulated = 0.0
+        self._playing = False
+        self._reference_landmarks = None
+        self._user_landmarks = None
+        self._reference_pose_detected = False
+        self._user_pose_detected = False
+        self._current_progress = 0.0
+        self._current_accuracy = 0.0
+        self._average_accuracy = 0.0
+        self._accuracy_sum = 0.0
+        self._scored_frames = 0
+        self._matched_frames = 0
+        self._streak = 0
+        self._best_streak = 0
+        self._reward_points_estimate = 0
+        self.start_session(song_title, difficulty=difficulty)
+
+    def start_session(self, song_title: str, difficulty=None):
+        now = time.time()
+        with self._lock:
+            if difficulty is not None:
+                self._difficulty = max(1, int(difficulty))
+            self._session_id = f"{int(now * 1000)}-{_song_key(song_title).replace(' ', '-')}"
+            self._song_title = str(song_title).strip()
+            self._session_started_at = now
+            self._active_started_at = None
+            self._active_seconds_accumulated = 0.0
+            self._playing = False
+            self._reference_landmarks = None
+            self._user_landmarks = None
+            self._reference_pose_detected = False
+            self._user_pose_detected = False
+            self._current_progress = 0.0
+            self._current_accuracy = 0.0
+            self._average_accuracy = 0.0
+            self._accuracy_sum = 0.0
+            self._scored_frames = 0
+            self._matched_frames = 0
+            self._streak = 0
+            self._best_streak = 0
+            self._reward_points_estimate = 0
+
+    def set_difficulty(self, difficulty: int):
+        with self._lock:
+            self._difficulty = max(1, int(difficulty))
+            self._reward_points_estimate = self._estimate_reward_points_locked()
+
+    def set_playing(self, playing: bool):
+        now = time.time()
+        with self._lock:
+            if playing and not self._playing:
+                self._active_started_at = now
+            elif not playing and self._playing and self._active_started_at is not None:
+                self._active_seconds_accumulated += now - self._active_started_at
+                self._active_started_at = None
+            self._playing = bool(playing)
+            if not self._playing:
+                self._reward_points_estimate = self._estimate_reward_points_locked(now)
+
+    def update_reference(self, landmarks, progress: float):
+        copied_landmarks = _copy_landmarks(landmarks)
+        with self._lock:
+            self._reference_landmarks = copied_landmarks
+            self._reference_pose_detected = bool(copied_landmarks)
+            self._current_progress = max(0.0, min(1.0, float(progress)))
+
+    def update_user(self, landmarks):
+        copied_landmarks = _copy_landmarks(landmarks)
+        with self._lock:
+            reference_landmarks = _copy_landmarks(self._reference_landmarks)
+            playing = self._playing
+            difficulty = self._difficulty
+
+        distance = _calculate_pose_distance(reference_landmarks, copied_landmarks)
+        tolerance = POSE_TOLERANCE_BY_LEVEL.get(difficulty, POSE_TOLERANCE_BY_LEVEL[5])
+        accuracy = 0.0
+        matched = False
+        if distance is not None:
+            accuracy = max(0.0, min(1.0, 1.0 - (distance / tolerance)))
+            matched = accuracy >= POSE_MATCH_THRESHOLD
+
+        now = time.time()
+        with self._lock:
+            self._user_landmarks = copied_landmarks
+            self._user_pose_detected = bool(copied_landmarks)
+            self._current_accuracy = accuracy
+
+            if not playing:
+                return
+
+            if distance is None:
+                self._streak = 0
+                self._reward_points_estimate = self._estimate_reward_points_locked(now)
+                return
+
+            self._scored_frames += 1
+            self._accuracy_sum += accuracy
+            self._average_accuracy = self._accuracy_sum / max(1, self._scored_frames)
+            if matched:
+                self._matched_frames += 1
+                self._streak += 1
+                self._best_streak = max(self._best_streak, self._streak)
+            else:
+                self._streak = 0
+            self._reward_points_estimate = self._estimate_reward_points_locked(now)
+
+    def _current_active_seconds_locked(self, now=None) -> int:
+        now = time.time() if now is None else now
+        active_seconds = self._active_seconds_accumulated
+        if self._playing and self._active_started_at is not None:
+            active_seconds += now - self._active_started_at
+        return int(max(0.0, round(active_seconds)))
+
+    def _combo_multiplier_locked(self) -> float:
+        combo_steps = min(8, self._streak // 15)
+        return round(1.0 + combo_steps * 0.05, 2)
+
+    def _performance_tier_locked(self) -> str:
+        accuracy = self._average_accuracy
+        if accuracy >= 0.9:
+            return "gold"
+        if accuracy >= 0.8:
+            return "silver"
+        if accuracy >= 0.68:
+            return "bronze"
+        return "warming_up"
+
+    def _estimate_reward_points_locked(self, now=None) -> int:
+        active_seconds = self._current_active_seconds_locked(now)
+        combo_multiplier = self._combo_multiplier_locked()
+        accuracy_component = self._average_accuracy * 100.0
+        frame_component = self._matched_frames * max(1.0, combo_multiplier)
+        streak_bonus = self._best_streak * 0.75
+        time_bonus = (active_seconds / 20.0) * max(1, self._difficulty)
+        total = accuracy_component + frame_component + streak_bonus + time_bonus
+        return int(max(0, round(total)))
+
+    def get_status_payload(self):
+        with self._lock:
+            now = time.time()
+            started_at_ms = (
+                int(self._session_started_at * 1000)
+                if self._session_started_at is not None
+                else None
+            )
+            elapsed_seconds = (
+                int(max(0, round(now - self._session_started_at)))
+                if self._session_started_at is not None
+                else 0
+            )
+            return {
+                "sessionId": self._session_id,
+                "songTitle": self._song_title,
+                "difficulty": self._difficulty,
+                "startedAtEpochMs": started_at_ms,
+                "elapsedSeconds": elapsed_seconds,
+                "activeSeconds": self._current_active_seconds_locked(now),
+                "progressPercent": round(self._current_progress * 100.0, 1),
+                "poseDetected": self._user_pose_detected,
+                "referencePoseDetected": self._reference_pose_detected,
+                "currentAccuracy": round(self._current_accuracy, 3),
+                "averageAccuracy": round(self._average_accuracy, 3),
+                "streak": self._streak,
+                "bestStreak": self._best_streak,
+                "scoredFrames": self._scored_frames,
+                "matchedFrames": self._matched_frames,
+                "rewardPointsEstimate": self._reward_points_estimate,
+                "comboMultiplier": self._combo_multiplier_locked(),
+                "performanceTier": self._performance_tier_locked(),
+            }
+
+
+pose_session_analyzer = PoseSessionAnalyzer(
+    current_song_state["title"],
+    difficulty=current_song_state.get("level"),
+)
+
 
 @flask_app.route('/status', methods=['GET'])
 def status():
@@ -96,6 +442,7 @@ def status():
         "ip": get_lan_ip(),
         "port": SERVER_PORT,
         "currentSong": dict(current_song_state),
+        "sessionMetrics": pose_session_analyzer.get_status_payload(),
     }), 200
 
 
@@ -112,6 +459,11 @@ def disconnect():
     is_connected = False
     _set_current_song_playing(False)
     return jsonify({"connected": False}), 200
+
+
+@flask_app.route('/session_metrics', methods=['GET'])
+def session_metrics():
+    return jsonify(pose_session_analyzer.get_status_payload()), 200
 
 
 @flask_app.route('/song_data', methods=['POST'])
@@ -329,6 +681,15 @@ def _set_current_song_playing(playing: bool):
         **current_song_state,
         "playing": bool(playing),
     }
+    pose_session_analyzer.set_playing(bool(playing))
+
+
+def _set_current_song_level(level: int):
+    global current_song_state
+    current_song_state = {
+        **current_song_state,
+        "level": int(level),
+    }
 
 
 class SoundPlayer:
@@ -535,19 +896,36 @@ class SoundPlayer:
 
 
 class VideoPanel(ctk.CTkFrame):
-    def __init__(self, parent, source, display_width=VIDEO_WIDTH, display_height=VIDEO_HEIGHT, face_overlay_path: Optional[str] = None):
+    def __init__(
+        self,
+        parent,
+        source,
+        display_width=VIDEO_WIDTH,
+        display_height=VIDEO_HEIGHT,
+        face_overlay_path: Optional[str] = None,
+        panel_role: str = "reference",
+        pose_analyzer: Optional[PoseSessionAnalyzer] = None,
+        draw_pose_landmarks: bool = False,
+    ):
         super().__init__(parent)
         self.cap = cv2.VideoCapture(source)
         if not self.cap.isOpened():
             raise ValueError("Unable to open video source", source)
         self._rotation_degrees = int(self.cap.get(
             cv2.CAP_PROP_ORIENTATION_META) or 0) % 360
+        self._frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         self._face_overlay_enabled = bool(face_overlay_path)
         self._face_overlay = _load_overlay_image(
             face_overlay_path) if face_overlay_path else None
         self._face_detection = None
         self._face_detection_counter = 0
         self._last_face_bbox = None
+        self._panel_role = panel_role
+        self._pose_analyzer = pose_analyzer
+        self._draw_pose_landmarks = bool(draw_pose_landmarks)
+        self._pose = None
+        self._pose_frame_counter = 0
+        self._last_pose_landmarks = None
 
         self._display_width = 0
         self._display_height = 0
@@ -588,6 +966,14 @@ class VideoPanel(ctk.CTkFrame):
             self._face_detection = mp.solutions.face_detection.FaceDetection(
                 model_selection=0,
                 min_detection_confidence=0.5,
+            )
+
+        if self._pose_analyzer is not None:
+            self._pose = mp_pose.Pose(
+                model_complexity=0,
+                smooth_landmarks=True,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
             )
 
         # Start background reader
@@ -637,8 +1023,19 @@ class VideoPanel(ctk.CTkFrame):
             elif self._rotation_degrees == 270:
                 frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
+            frame_progress = 0.0
+            if self._frame_count > 0:
+                frame_progress = (
+                    self.cap.get(cv2.CAP_PROP_POS_FRAMES) / float(self._frame_count)
+                )
+
+            pose_landmarks = self._process_pose(frame, frame_progress)
+
             if self._face_overlay_enabled and self._face_overlay is not None:
                 frame = self._apply_face_overlay(frame)
+
+            if self._draw_pose_landmarks and pose_landmarks:
+                frame = _draw_pose_landmarks(frame, pose_landmarks)
 
             # Scale down (if needed) and center-crop in the worker thread
             h, w, _ = frame.shape
@@ -667,6 +1064,36 @@ class VideoPanel(ctk.CTkFrame):
                 time.sleep(min(sleep_dt, 0.02))
             else:
                 next_t = time.monotonic()
+
+    def _process_pose(self, frame, frame_progress: float):
+        if self._pose is None:
+            return None
+
+        run_detection = (
+            self._last_pose_landmarks is None
+            or self._pose_frame_counter % POSE_ANALYSIS_FRAME_INTERVAL == 0
+        )
+        self._pose_frame_counter += 1
+
+        if run_detection:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = self._pose.process(rgb)
+            self._last_pose_landmarks = (
+                list(results.pose_landmarks.landmark)
+                if results and results.pose_landmarks
+                else None
+            )
+
+        pose_landmarks = self._last_pose_landmarks
+        if self._pose_analyzer is None:
+            return pose_landmarks
+
+        if self._panel_role == "reference":
+            self._pose_analyzer.update_reference(pose_landmarks, frame_progress)
+        else:
+            self._pose_analyzer.update_user(pose_landmarks)
+
+        return pose_landmarks
 
     def _apply_face_overlay(self, frame):
         if self._face_detection is None:
@@ -757,6 +1184,8 @@ class VideoPanel(ctk.CTkFrame):
             pass
         if self._face_detection is not None:
             self._face_detection.close()
+        if self._pose is not None:
+            self._pose.close()
         if self.cap.isOpened():
             self.cap.release()
 
@@ -787,6 +1216,7 @@ class App(ctk.CTk):
         self._right_panel_ratio = 1.0
         self._panel_animation_job = None
         self._last_connection_state = False
+        self.pose_analyzer = pose_session_analyzer
 
         self.sound_player = SoundPlayer(
             _find_audio_path_by_title(Path(REFERENCE_VIDEO_PATH).stem)
@@ -804,11 +1234,19 @@ class App(ctk.CTk):
         self.content.grid_columnconfigure(3, weight=1)
         self.content.grid_rowconfigure(0, weight=1)
 
-        self.left_panel = VideoPanel(self.content, REFERENCE_VIDEO_PATH)
+        self.left_panel = VideoPanel(
+            self.content,
+            REFERENCE_VIDEO_PATH,
+            panel_role="reference",
+            pose_analyzer=self.pose_analyzer,
+        )
         self.right_panel = VideoPanel(
             self.content,
             USER_CAMERA_INDEX,
             face_overlay_path=STITCH_FACE_PATH,
+            panel_role="user",
+            pose_analyzer=self.pose_analyzer,
+            draw_pose_landmarks=True,
         )
         # Webcam view is never paused
         self.right_panel.set_paused(False)
@@ -821,6 +1259,11 @@ class App(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.left_panel.set_paused(True)
+        _set_current_song_level(self._difficulty)
+        self.pose_analyzer.start_session(
+            Path(REFERENCE_VIDEO_PATH).stem,
+            difficulty=self._difficulty,
+        )
         self._apply_panel_proportion(
             self._left_panel_ratio,
             self._right_panel_ratio,
@@ -982,6 +1425,8 @@ class App(ctk.CTk):
         elif command.startswith("change_difficulty:"):
             level = int(command.split(":")[1])
             self._difficulty = level
+            _set_current_song_level(level)
+            self.pose_analyzer.set_difficulty(level)
             print("Set difficulty to:", level)
 
         elif command.startswith("start_new_session"):
@@ -1032,10 +1477,13 @@ class App(ctk.CTk):
             new_path,
             display_width=current_width,
             display_height=current_height,
+            panel_role="reference",
+            pose_analyzer=self.pose_analyzer,
         )
         self.left_panel.grid(
             row=0, column=1, padx=(8, 4), pady=8)
         self.left_panel.set_paused(True)
+        self.pose_analyzer.start_session(song_title, difficulty=self._difficulty)
         self._apply_panel_proportion(
             self._left_panel_ratio,
             self._right_panel_ratio,
@@ -1121,6 +1569,7 @@ class App(ctk.CTk):
 
     def on_closing(self):
         self._updating = False
+        self.pose_analyzer.set_playing(False)
         self.left_panel.release()
         self.right_panel.release()
         self.sound_player.close()

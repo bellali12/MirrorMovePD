@@ -139,3 +139,12 @@ The Flutter app already includes Firebase configuration files in the project, bu
 ## Current Status
 
 This repository is a prototype/research codebase rather than a polished production release. The main end-user flow is the Flutter app plus the desktop companion in [`analysis/app.py`](analysis/app.py); the other Python scripts in [`analysis/`](analysis) are supporting experiments and tooling around pose estimation.
+
+
+
+
+
+REWARD MECHANISM:
+- Unlock face overlay cosmetics
+- Unlock more songs
+- Score System and Tracker

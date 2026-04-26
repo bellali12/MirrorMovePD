@@ -84,6 +84,7 @@ class _SessionScreenState extends State<SessionScreen> {
       <String, Map<String, dynamic>>{};
   String _currentSongTitle = 'Song Name';
   String _currentSongArtist = 'Artist Name';
+  DesktopSessionMetrics _sessionMetrics = DesktopSessionMetrics.empty();
 
   final DataService dataService = DataService();
 
@@ -187,6 +188,14 @@ class _SessionScreenState extends State<SessionScreen> {
     if (_isFetchingStatus || dataService.desktopAppUrl.isEmpty) {
       if (dataService.desktopAppUrl.isEmpty) {
         _setWavePlaying(false);
+        if (!dataService.desktopSessionMetrics.isEmpty) {
+          dataService.desktopSessionMetrics = DesktopSessionMetrics.empty();
+        }
+        if (mounted && !_sessionMetrics.isEmpty) {
+          setState(() {
+            _sessionMetrics = DesktopSessionMetrics.empty();
+          });
+        }
       }
       return;
     }
@@ -213,9 +222,15 @@ class _SessionScreenState extends State<SessionScreen> {
       final currentSong = payload['currentSong'] is Map
           ? Map<String, dynamic>.from(payload['currentSong'] as Map)
           : <String, dynamic>{};
+      final sessionMetrics = payload['sessionMetrics'] is Map
+          ? DesktopSessionMetrics.fromMap(
+              Map<String, dynamic>.from(payload['sessionMetrics'] as Map),
+            )
+          : DesktopSessionMetrics.empty();
       final title = _resolveSongTitle(currentSong);
       final artist = _resolveSongArtist(currentSong, title);
       final isPlaying = connected && currentSong['playing'] == true;
+      dataService.desktopSessionMetrics = sessionMetrics;
 
       if (mounted) {
         setState(() {
@@ -223,15 +238,18 @@ class _SessionScreenState extends State<SessionScreen> {
           _isDesktopPlaying = isPlaying;
           _currentSongTitle = title;
           _currentSongArtist = artist;
+          _sessionMetrics = sessionMetrics;
         });
       }
       _setWavePlaying(isPlaying);
     } catch (e) {
       print('Error checking connection: $e');
+      dataService.desktopSessionMetrics = DesktopSessionMetrics.empty();
       if (mounted) {
         setState(() {
           isConnected = false;
           _isDesktopPlaying = false;
+          _sessionMetrics = DesktopSessionMetrics.empty();
         });
       }
       _setWavePlaying(false);
@@ -299,6 +317,10 @@ class _SessionScreenState extends State<SessionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final int accuracyPercent = (_sessionMetrics.currentAccuracy * 100).round();
+    final int averageAccuracyPercent = (_sessionMetrics.averageAccuracy * 100)
+        .round();
+
     return Scaffold(
       appBar: AppBar(
         actions: [
@@ -404,6 +426,37 @@ class _SessionScreenState extends State<SessionScreen> {
                             color: const Color(0xFF8B7D7D),
                             fontWeight: FontWeight.w600,
                           ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            _MetricPill(
+                              label: 'Accuracy',
+                              value: '$accuracyPercent%',
+                            ),
+                            const SizedBox(width: 8),
+                            _MetricPill(
+                              label: 'Combo',
+                              value:
+                                  'x${_sessionMetrics.comboMultiplier.toStringAsFixed(2)}',
+                            ),
+                            const SizedBox(width: 8),
+                            _MetricPill(
+                              label: 'Points',
+                              value: '${_sessionMetrics.rewardPointsEstimate}',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Reward data: avg $averageAccuracyPercent% • streak ${_sessionMetrics.streak} • progress ${_sessionMetrics.progressPercent.toStringAsFixed(0)}%',
+                          style: TextStyle(
+                            fontSize: SizeConfig.horizontal! * 2.8,
+                            color: const Color(0xFF6A5E63),
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -614,6 +667,52 @@ class PCMVisualizer extends ChangeNotifier {
   void reset() {
     value = WaveformFrame(List<double>.filled(barCount, 0));
     notifyListeners();
+  }
+}
+
+class _MetricPill extends StatelessWidget {
+  const _MetricPill({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color.fromARGB(80, 139, 125, 125),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF6A5E63),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 16,
+                color: Color(0xFF312A2D),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

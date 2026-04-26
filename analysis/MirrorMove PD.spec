@@ -5,7 +5,7 @@ a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[('videos', 'assets')],
+    datas=[('videos', 'videos'), ('audio', 'audio'), ('images', 'images')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

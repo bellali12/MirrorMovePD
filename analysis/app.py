@@ -5,12 +5,22 @@ import tkinter as tk
 import customtkinter as ctk
 from PIL import Image, ImageTk
 import cv2
+import mediapipe as mp
+import numpy as np
 import threading
 import time
 import os
 import simpleaudio as sa
 import queue
 import random
+import shutil
+import subprocess
+import sys
+import tempfile
+import wave
+from pathlib import Path
+from typing import Optional
+import sounddevice as sd
 
 """
 ISSUES:
@@ -30,13 +40,27 @@ except Exception:
     pass
 
 # ----- CONFIG -----
-REFERENCE_VIDEO_PATH = "videos/Every Breath You Take.mp4"
-SONG_TO_INDEX = {
-    "Every Breath You Take": 0,
-    "All That Jazz": 1,
-    "Dance of the Sugar Plum Fairy": 2,
-    "New York, New York": 3
-}
+
+
+def resource_path(relative_path: str) -> str:
+    base_path = getattr(sys, "_MEIPASS", os.path.dirname(
+        os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
+
+
+VIDEOS_DIR = resource_path("videos")
+AUDIO_DIR = resource_path("audio")
+IMAGES_DIR = resource_path("images")
+SESSION_TITLES = [
+    "Every Breath You Take",
+    "Dance of the Sugar Plum Fairy",
+    "All That Jazz",
+    "New York, New York",
+]
+SESSION_FILES = [resource_path(f"videos/{title}.mp4")
+                 for title in SESSION_TITLES]
+REFERENCE_VIDEO_PATH = SESSION_FILES[0]
+SONG_TO_INDEX = {title: index for index, title in enumerate(SESSION_TITLES)}
 
 
 USER_CAMERA_INDEX = 0
@@ -45,7 +69,8 @@ VIDEO_WIDTH = 480
 VIDEO_HEIGHT = 640
 APP_BG_COLOR = "#d9d9d9"
 
-SOUND_FILE_PATH = "audio/birds_chirping.wav"
+DEFAULT_SOUND_FILE_PATH = resource_path("audio/birds_chirping.wav")
+STITCH_FACE_PATH = resource_path("images/stitch face.png")
 
 # Allow overriding the Flask port (useful if it is taken by something else)
 SERVER_PORT = int(os.environ.get("MIRRORMOTION_PORT", "5003"))
@@ -94,20 +119,16 @@ def song_data():
     data = request.json
     print(f"Received song data: {data}")
     _register_song_metadata(data)
-
-    # Get all the filenames in the 'videos' directory
-    video_filenames = os.listdir('videos')
-    print(f"Available video files: {video_filenames}")
-
     target_name = data.get("title", "")
+    matched_video = _find_video_path_by_title(target_name)
 
-    for filename in video_filenames:
-        # Strip off the extension
-        name_without_ext = os.path.splitext(filename)[0]
-        if name_without_ext.lower() == target_name.lower():
-            print(f"Matched video file: {filename}")
-            _set_current_song(name_without_ext, playing=False)
-            command_queue.put(f"start_new_session:{filename[:-4]}")
+    if matched_video:
+        title = Path(matched_video).stem
+        print(f"Matched video file: {matched_video}")
+        _set_current_song(title, playing=False)
+        command_queue.put(f"start_new_session:{title}")
+    else:
+        print(f"No matching video found for: {target_name}")
 
     return jsonify({"status": "received"}), 200
 
@@ -205,6 +226,85 @@ def _register_song_metadata(song_data):
     }
 
 
+def _normalize_media_name(value: str) -> str:
+    return " ".join(str(value).strip().lower().split())
+
+
+def _find_video_path_by_title(title: str):
+    target = _normalize_media_name(title)
+
+    for path in SESSION_FILES:
+        if _normalize_media_name(Path(path).stem) == target:
+            return path
+
+    videos_dir = Path(VIDEOS_DIR)
+    if not videos_dir.exists():
+        return None
+
+    for path in videos_dir.iterdir():
+        if path.is_file() and path.suffix.lower() == ".mp4":
+            if _normalize_media_name(path.stem) == target:
+                return str(path)
+    return None
+
+
+def _find_audio_path_by_title(title: str):
+    target = _normalize_media_name(title)
+    audio_dir = Path(AUDIO_DIR)
+    if not audio_dir.exists():
+        return None
+
+    for path in sorted(audio_dir.iterdir()):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in {".mp3", ".wav"}:
+            continue
+        if target in _normalize_media_name(path.stem):
+            return str(path)
+    return None
+
+
+def _load_overlay_image(path: str):
+    if not path:
+        return None
+
+    overlay = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+    if overlay is None or overlay.ndim != 3 or overlay.shape[2] != 4:
+        return None
+    return overlay
+
+
+def _blend_overlay(frame, overlay, x: int, y: int, width: int, height: int):
+    if overlay is None or width <= 0 or height <= 0:
+        return frame
+
+    frame_h, frame_w = frame.shape[:2]
+    x1 = max(0, x)
+    y1 = max(0, y)
+    x2 = min(frame_w, x + width)
+    y2 = min(frame_h, y + height)
+    if x1 >= x2 or y1 >= y2:
+        return frame
+
+    overlay_resized = cv2.resize(
+        overlay, (width, height), interpolation=cv2.INTER_LINEAR)
+    crop_x1 = x1 - x
+    crop_y1 = y1 - y
+    crop_x2 = crop_x1 + (x2 - x1)
+    crop_y2 = crop_y1 + (y2 - y1)
+    overlay_crop = overlay_resized[crop_y1:crop_y2, crop_x1:crop_x2]
+
+    alpha = overlay_crop[:, :, 3:4].astype(float) / 255.0
+    if alpha.size == 0:
+        return frame
+
+    background = frame[y1:y2, x1:x2].astype(float)
+    foreground = overlay_crop[:, :, :3].astype(float)
+    blended = foreground * alpha + background * (1.0 - alpha)
+    frame[y1:y2, x1:x2] = blended.astype(frame.dtype)
+    return frame
+
+
 def _set_current_song(title: str, playing=None):
     global current_song_state
     normalized_title = str(title).strip()
@@ -234,54 +334,220 @@ def _set_current_song_playing(playing: bool):
 class SoundPlayer:
     def __init__(self, path: str):
         self.path = path
-        self._wave_obj = None
-        self._play_obj = None
+        self._volume = 0.4
+        self._audio_data = None
+        self._sample_rate = None
+        self._channels = 0
+        self._frame_index = 0
+        self._stream = None
         self._should_play = False
-        self._running = True
+        self._cache_dir = Path(tempfile.gettempdir()) / \
+            "mirrormotion_audio_cache"
+        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        self._mpg123_path = shutil.which("mpg123")
+        self._lame_path = shutil.which("lame")
 
-        self._thread = threading.Thread(target=self._loop, daemon=True)
-        self._thread.start()
+        self._load_source(path)
 
-    def _loop(self):
-        while self._running:
-            if self._should_play:
-                if (self._play_obj is None) or (not self._play_obj.is_playing()):
-                    try:
-                        if self._wave_obj is None:
-                            self._wave_obj = sa.WaveObject.from_wave_file(
-                                self.path)
+    def _decoded_audio_path(self, path: str) -> str:
+        source = Path(path)
+        if source.suffix.lower() == ".wav":
+            return str(source)
 
-                        self._play_obj = self._wave_obj.play()
-                    except Exception:
-                        print("Error playing sound")
-                        time.sleep(0.1)
-                time.sleep(0.1)
-            else:
-                if self._play_obj is not None and self._play_obj.is_playing():
-                    self._play_obj.stop()
-                    self._play_obj = None
-                time.sleep(0.1)
+        target = self._cache_dir / \
+            f"{source.stem}-{int(source.stat().st_mtime)}.wav"
+        source_stat = source.stat()
+        if target.exists():
+            target_stat = target.stat()
+            if target_stat.st_mtime >= source_stat.st_mtime and target_stat.st_size > 0:
+                return str(target)
+
+        if target.exists():
+            target.unlink()
+
+        if self._mpg123_path:
+            subprocess.run(
+                [self._mpg123_path, "-q", "-w", str(target), str(source)],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        elif self._lame_path:
+            subprocess.run(
+                [self._lame_path, "--quiet", "--decode",
+                    str(source), str(target)],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            raise RuntimeError(
+                "No MP3 decoder available for desktop audio playback.")
+        return str(target)
+
+    def _load_source(self, path: str):
+        decoded_path = self._decoded_audio_path(path)
+        sample_rate, data = self._read_wav_file(decoded_path)
+        audio = self._normalize_audio_data(data)
+
+        with self._lock:
+            self.path = path
+            self._sample_rate = int(sample_rate)
+            self._audio_data = audio
+            self._channels = int(audio.shape[1])
+            self._frame_index = 0
+
+        self._close_stream()
+
+    def _read_wav_file(self, path: str):
+        with wave.open(path, "rb") as wav_file:
+            channels = wav_file.getnchannels()
+            sample_rate = wav_file.getframerate()
+            sample_width = wav_file.getsampwidth()
+            frame_count = wav_file.getnframes()
+            raw_frames = wav_file.readframes(frame_count)
+
+        dtype_by_width = {
+            1: np.uint8,
+            2: np.int16,
+            4: np.int32,
+        }
+        dtype = dtype_by_width.get(sample_width)
+        if dtype is None:
+            raise ValueError(f"Unsupported WAV sample width: {sample_width}")
+
+        data = np.frombuffer(raw_frames, dtype=dtype)
+        if channels > 1:
+            data = data.reshape(-1, channels)
+        return sample_rate, data
+
+    def _normalize_audio_data(self, data):
+        audio = np.asarray(data)
+        if audio.ndim == 1:
+            audio = audio[:, np.newaxis]
+
+        if audio.dtype == np.uint8:
+            audio = (audio.astype(np.float32) - 128.0) / 128.0
+        elif np.issubdtype(audio.dtype, np.integer):
+            scale = float(np.iinfo(audio.dtype).max)
+            audio = audio.astype(np.float32) / scale
+        else:
+            audio = audio.astype(np.float32)
+
+        return np.clip(audio, -1.0, 1.0)
+
+    def _rebuild_stream(self):
+        was_playing = self._should_play and self._stream is not None and self._stream.active
+        self._close_stream()
+
+        if self._audio_data is None or self._sample_rate is None or self._channels <= 0:
+            return
+
+        self._stream = sd.OutputStream(
+            samplerate=self._sample_rate,
+            channels=self._channels,
+            dtype="float32",
+            callback=self._audio_callback,
+        )
+        if was_playing:
+            self._stream.start()
+
+    def _audio_callback(self, outdata, frames, time_info, status):
+        del time_info
+        if status:
+            print(f"Audio callback status: {status}")
+
+        outdata.fill(0)
+        with self._lock:
+            if self._audio_data is None:
+                return
+
+            start = self._frame_index
+            end = min(start + frames, len(self._audio_data))
+            chunk = self._audio_data[start:end]
+            if len(chunk) == 0:
+                return
+
+            volume = self._volume
+            outdata[:len(chunk)] = chunk * volume
+            self._frame_index = end
+
+            if self._frame_index >= len(self._audio_data):
+                self._should_play = False
+                self._frame_index = len(self._audio_data)
+                raise sd.CallbackStop()
+
+    def _close_stream(self):
+        if self._stream is None:
+            return
+        try:
+            if self._stream.active:
+                self._stream.stop()
+        except Exception:
+            pass
+        try:
+            self._stream.close()
+        except Exception:
+            pass
+        self._stream = None
 
     def start(self):
         self._should_play = True
+        with self._lock:
+            if self._audio_data is None:
+                return
+            if self._frame_index >= len(self._audio_data):
+                self._frame_index = 0
+
+        if self._stream is None:
+            self._rebuild_stream()
+        if self._stream is not None and not self._stream.active:
+            self._stream.start()
 
     def stop(self):
         self._should_play = False
-        if self._play_obj is not None and self._play_obj.is_playing():
-            self._play_obj.stop()
-            self._play_obj = None
+        if self._stream is not None and self._stream.active:
+            self._stream.stop()
+
+    def set_source(self, path: str):
+        path = str(path)
+        if not path or path == self.path:
+            return
+
+        was_playing = self._should_play
+        self._should_play = False
+        self._load_source(path)
+        if was_playing:
+            self.start()
+
+    def set_volume(self, volume_percent: float):
+        volume_percent = max(0.0, min(100.0, float(volume_percent)))
+        new_volume = volume_percent / 100.0
+        if abs(new_volume - self._volume) < 0.001:
+            return
+
+        self._volume = new_volume
 
     def close(self):
-        self._running - False
-        self.stop()
+        self._should_play = False
+        self._close_stream()
 
 
 class VideoPanel(ctk.CTkFrame):
-    def __init__(self, parent, source, display_width=VIDEO_WIDTH, display_height=VIDEO_HEIGHT):
+    def __init__(self, parent, source, display_width=VIDEO_WIDTH, display_height=VIDEO_HEIGHT, face_overlay_path: Optional[str] = None):
         super().__init__(parent)
         self.cap = cv2.VideoCapture(source)
         if not self.cap.isOpened():
             raise ValueError("Unable to open video source", source)
+        self._rotation_degrees = int(self.cap.get(
+            cv2.CAP_PROP_ORIENTATION_META) or 0) % 360
+        self._face_overlay_enabled = bool(face_overlay_path)
+        self._face_overlay = _load_overlay_image(
+            face_overlay_path) if face_overlay_path else None
+        self._face_detection = None
+        self._face_detection_counter = 0
+        self._last_face_bbox = None
 
         self._display_width = 0
         self._display_height = 0
@@ -317,6 +583,12 @@ class VideoPanel(ctk.CTkFrame):
         if src_fps <= 0 or src_fps > 120:
             src_fps = FPS
         self._period = 1.0 / float(src_fps)
+
+        if self._face_overlay_enabled:
+            self._face_detection = mp.solutions.face_detection.FaceDetection(
+                model_selection=0,
+                min_detection_confidence=0.5,
+            )
 
         # Start background reader
         self._reader_thread = threading.Thread(
@@ -358,6 +630,16 @@ class VideoPanel(ctk.CTkFrame):
                 time.sleep(0.02)
                 continue
 
+            if self._rotation_degrees == 90:
+                frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+            elif self._rotation_degrees == 180:
+                frame = cv2.rotate(frame, cv2.ROTATE_180)
+            elif self._rotation_degrees == 270:
+                frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+            if self._face_overlay_enabled and self._face_overlay is not None:
+                frame = self._apply_face_overlay(frame)
+
             # Scale down (if needed) and center-crop in the worker thread
             h, w, _ = frame.shape
             if h > VIDEO_HEIGHT:
@@ -385,6 +667,45 @@ class VideoPanel(ctk.CTkFrame):
                 time.sleep(min(sleep_dt, 0.02))
             else:
                 next_t = time.monotonic()
+
+    def _apply_face_overlay(self, frame):
+        if self._face_detection is None:
+            return frame
+
+        self._face_detection_counter = (self._face_detection_counter + 1) % 3
+        frame_h, frame_w = frame.shape[:2]
+
+        if self._face_detection_counter == 0 or self._last_face_bbox is None:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = self._face_detection.process(rgb)
+            detection = results.detections[0] if results and results.detections else None
+            if detection is None:
+                self._last_face_bbox = None
+                return frame
+
+            rel_box = detection.location_data.relative_bounding_box
+            x = int(rel_box.xmin * frame_w)
+            y = int(rel_box.ymin * frame_h)
+            width = int(rel_box.width * frame_w)
+            height = int(rel_box.height * frame_h)
+            self._last_face_bbox = (x, y, width, height)
+
+        if self._last_face_bbox is None:
+            return frame
+
+        x, y, width, height = self._last_face_bbox
+        overlay_width = max(1, int(width * 1.7))
+        overlay_height = max(1, int(height * 1.95))
+        overlay_x = x - (overlay_width - width) // 2
+        overlay_y = y - int(height * 0.9)
+        return _blend_overlay(
+            frame,
+            self._face_overlay,
+            overlay_x,
+            overlay_y,
+            overlay_width,
+            overlay_height,
+        )
 
     def draw_latest(self):
         # Very light work on the UI thread: only create image if a new frame arrived
@@ -434,6 +755,8 @@ class VideoPanel(ctk.CTkFrame):
                 self._reader_thread.join(timeout=0.5)
         except Exception:
             pass
+        if self._face_detection is not None:
+            self._face_detection.close()
         if self.cap.isOpened():
             self.cap.release()
 
@@ -453,17 +776,9 @@ class App(ctk.CTk):
         self._volume = 40
         self.after(250, self._poll_commands)
 
-        self._sessions = ['videos/Every Breath You Take.mp4',
-                          'videos/Dance of the Sugar Plum Fairy.mp4',
-                          'videos/All That Jazz.mp4',
-                          'videos/New York, New York.mp4',
-                          ]
+        self._sessions = list(SESSION_FILES)
         self._session_index = 0
-        self._master_sessions = ['videos/Every Breath You Take.mp4',
-                                 'videos/Dance of the Sugar Plum Fairy.mp4',
-                                 'videos/All That Jazz.mp4',
-                                 'videos/New York, New York.mp4',
-                                 ]
+        self._master_sessions = list(SESSION_FILES)
 
         # Toast state
         self._toast_window = None
@@ -473,19 +788,28 @@ class App(ctk.CTk):
         self._panel_animation_job = None
         self._last_connection_state = False
 
-        self.sound_player = SoundPlayer(SOUND_FILE_PATH)
+        self.sound_player = SoundPlayer(
+            _find_audio_path_by_title(Path(REFERENCE_VIDEO_PATH).stem)
+            or DEFAULT_SOUND_FILE_PATH
+        )
 
         self.content = ctk.CTkFrame(self, fg_color=APP_BG_COLOR)
         self.content.pack(padx=20, pady=20, fill="both", expand=True)
 
         self.content.grid_columnconfigure(0, weight=1)
-        self.content.grid_columnconfigure(1, weight=0, minsize=VIDEO_WIDTH + 20)
-        self.content.grid_columnconfigure(2, weight=0, minsize=VIDEO_WIDTH + 20)
+        self.content.grid_columnconfigure(
+            1, weight=0, minsize=VIDEO_WIDTH + 20)
+        self.content.grid_columnconfigure(
+            2, weight=0, minsize=VIDEO_WIDTH + 20)
         self.content.grid_columnconfigure(3, weight=1)
         self.content.grid_rowconfigure(0, weight=1)
 
         self.left_panel = VideoPanel(self.content, REFERENCE_VIDEO_PATH)
-        self.right_panel = VideoPanel(self.content, USER_CAMERA_INDEX)
+        self.right_panel = VideoPanel(
+            self.content,
+            USER_CAMERA_INDEX,
+            face_overlay_path=STITCH_FACE_PATH,
+        )
         # Webcam view is never paused
         self.right_panel.set_paused(False)
 
@@ -638,11 +962,11 @@ class App(ctk.CTk):
             if self.left_panel._paused:
                 self.left_panel.set_paused(False)
                 _set_current_song_playing(True)
-                # self.sound_player.start()
+                self.sound_player.start()
             else:
                 self.left_panel.set_paused(True)
                 _set_current_song_playing(False)
-                # self.sound_player.stop()
+                self.sound_player.stop()
         elif command == "prev_session":
             self._session_index -= 1
             self._switch_session(self._session_index)
@@ -652,6 +976,7 @@ class App(ctk.CTk):
         elif command.startswith("set_volume:"):
             volume = float(command.split(":")[1])
             self._volume = volume
+            self.sound_player.set_volume(volume)
             print("Set volume to:", volume)
         # for now assum difficulty determines pose tolerance
         elif command.startswith("change_difficulty:"):
@@ -660,8 +985,11 @@ class App(ctk.CTk):
             print("Set difficulty to:", level)
 
         elif command.startswith("start_new_session"):
-            song_name = command.split(":")[1]
-            song_idx = SONG_TO_INDEX[song_name]
+            song_name = command.split(":", 1)[1]
+            song_idx = SONG_TO_INDEX.get(song_name)
+            if song_idx is None:
+                print(f"Unknown session requested: {song_name}")
+                return
             self._switch_session(song_idx)
 
         elif command.startswith("change_proportion:"):
@@ -712,6 +1040,9 @@ class App(ctk.CTk):
             self._left_panel_ratio,
             self._right_panel_ratio,
             redraw=False,
+        )
+        self.sound_player.set_source(
+            _find_audio_path_by_title(song_title) or DEFAULT_SOUND_FILE_PATH
         )
         self.sound_player.stop()
 
@@ -764,7 +1095,7 @@ class App(ctk.CTk):
             if self._last_connection_state:
                 self.left_panel.set_paused(True)
                 _set_current_song_playing(False)
-            # self.sound_player.stop()
+                self.sound_player.stop()
             if not self._popup_shown_this_session:
                 self._show_ip_popup()
 
@@ -773,7 +1104,7 @@ class App(ctk.CTk):
             if not self._last_connection_state:
                 self.left_panel.set_paused(False)
                 _set_current_song_playing(True)
-            # self.sound_player.start()
+                self.sound_player.start()
             self._popup_shown_this_session = True
         self._last_connection_state = currently_connected
         self.after(500, self._update_connection_toast)

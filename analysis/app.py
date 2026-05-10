@@ -429,12 +429,6 @@ class PoseSessionAnalyzer:
             }
 
 
-pose_session_analyzer = PoseSessionAnalyzer(
-    current_song_state["title"],
-    difficulty=current_song_state.get("level"),
-)
-
-
 @flask_app.route('/status', methods=['GET'])
 def status():
     return jsonify({
@@ -563,6 +557,12 @@ def button_callback():
 
 def _song_key(title: str) -> str:
     return str(title).strip().lower()
+
+
+pose_session_analyzer = PoseSessionAnalyzer(
+    current_song_state["title"],
+    difficulty=current_song_state.get("level"),
+)
 
 
 def _register_song_metadata(song_data):

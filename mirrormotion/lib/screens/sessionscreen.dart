@@ -414,50 +414,50 @@ class _SessionScreenState extends State<SessionScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        const Spacer(),
-                        Text(
-                          _isDesktopPlaying
-                              ? 'Playing on desktop companion'
-                              : (isConnected
-                                    ? 'Paused on desktop companion'
-                                    : 'Waiting for desktop companion'),
-                          style: TextStyle(
-                            fontSize: SizeConfig.horizontal! * 3,
-                            color: const Color(0xFF8B7D7D),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            _MetricPill(
-                              label: 'Accuracy',
-                              value: '$accuracyPercent%',
-                            ),
-                            const SizedBox(width: 8),
-                            _MetricPill(
-                              label: 'Combo',
-                              value:
-                                  'x${_sessionMetrics.comboMultiplier.toStringAsFixed(2)}',
-                            ),
-                            const SizedBox(width: 8),
-                            _MetricPill(
-                              label: 'Points',
-                              value: '${_sessionMetrics.rewardPointsEstimate}',
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Reward data: avg $averageAccuracyPercent% • streak ${_sessionMetrics.streak} • progress ${_sessionMetrics.progressPercent.toStringAsFixed(0)}%',
-                          style: TextStyle(
-                            fontSize: SizeConfig.horizontal! * 2.8,
-                            color: const Color(0xFF6A5E63),
-                            fontWeight: FontWeight.w600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        // const Spacer(),
+                        // Text(
+                        //   _isDesktopPlaying
+                        //       ? 'Playing on desktop companion'
+                        //       : (isConnected
+                        //             ? 'Paused on desktop companion'
+                        //             : 'Waiting for desktop companion'),
+                        //   style: TextStyle(
+                        //     fontSize: SizeConfig.horizontal! * 3,
+                        //     color: const Color(0xFF8B7D7D),
+                        //     fontWeight: FontWeight.w600,
+                        //   ),
+                        // ),
+                        // const SizedBox(height: 10),
+                        // Row(
+                        //   children: [
+                        //     _MetricPill(
+                        //       label: 'Accuracy',
+                        //       value: '$accuracyPercent%',
+                        //     ),
+                        //     const SizedBox(width: 8),
+                        //     _MetricPill(
+                        //       label: 'Combo',
+                        //       value:
+                        //           'x${_sessionMetrics.comboMultiplier.toStringAsFixed(2)}',
+                        //     ),
+                        //     const SizedBox(width: 8),
+                        //     _MetricPill(
+                        //       label: 'Points',
+                        //       value: '${_sessionMetrics.rewardPointsEstimate}',
+                        //     ),
+                        //   ],
+                        // ),
+                        // const SizedBox(height: 8),
+                        // Text(
+                        //   'Reward data: avg $averageAccuracyPercent% • streak ${_sessionMetrics.streak} • progress ${_sessionMetrics.progressPercent.toStringAsFixed(0)}%',
+                        //   style: TextStyle(
+                        //     fontSize: SizeConfig.horizontal! * 2.8,
+                        //     color: const Color(0xFF6A5E63),
+                        //     fontWeight: FontWeight.w600,
+                        //   ),
+                        //   maxLines: 1,
+                        //   overflow: TextOverflow.ellipsis,
+                        // ),
                       ],
                     ),
                   ),

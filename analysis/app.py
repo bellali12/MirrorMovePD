@@ -70,6 +70,12 @@ FPS = 30
 VIDEO_WIDTH = 480
 VIDEO_HEIGHT = 640
 APP_BG_COLOR = "#d9d9d9"
+METRICS_TILE_COLOR = "#5C5360"
+METRICS_TILE_TEXT_COLOR = "#FFFFFF"
+METRICS_TILE_ALPHA = 0.70
+METRICS_TILE_WIDTH = 120
+METRICS_TILE_HEIGHT = 100
+METRICS_TILE_GAP = 42
 
 DEFAULT_SOUND_FILE_PATH = resource_path("audio/birds_chirping.wav")
 STITCH_FACE_PATH = resource_path("images/stitch face.png")
@@ -215,8 +221,10 @@ def _calculate_pose_distance(reference_landmarks, current_landmarks):
 
     ref_nose = reference_landmarks[0]
     curr_nose = current_landmarks[0]
-    ref_scale = math.hypot(ref_nose.x - ref_knees[0], ref_nose.y - ref_knees[1])
-    curr_scale = math.hypot(curr_nose.x - curr_knees[0], curr_nose.y - curr_knees[1])
+    ref_scale = math.hypot(
+        ref_nose.x - ref_knees[0], ref_nose.y - ref_knees[1])
+    curr_scale = math.hypot(
+        curr_nose.x - curr_knees[0], curr_nose.y - curr_knees[1])
     if ref_scale <= 1e-4 or curr_scale <= 1e-4:
         return None
 
@@ -232,10 +240,12 @@ def _calculate_pose_distance(reference_landmarks, current_landmarks):
         reference_landmark = reference_landmarks[index]
         current_landmark = current_landmarks[index]
         adjusted_ref_x = (
-            (reference_landmark.x - ref_torso[0]) * comparison_scale + curr_torso[0]
+            (reference_landmark.x - ref_torso[0]
+             ) * comparison_scale + curr_torso[0]
         )
         adjusted_ref_y = (
-            (reference_landmark.y - ref_torso[1]) * comparison_scale + curr_torso[1]
+            (reference_landmark.y - ref_torso[1]
+             ) * comparison_scale + curr_torso[1]
         )
         total_distance += math.hypot(
             adjusted_ref_x - current_landmark.x,
@@ -314,7 +324,8 @@ class PoseSessionAnalyzer:
                 self._active_started_at = None
             self._playing = bool(playing)
             if not self._playing:
-                self._reward_points_estimate = self._estimate_reward_points_locked(now)
+                self._reward_points_estimate = self._estimate_reward_points_locked(
+                    now)
 
     def update_reference(self, landmarks, progress: float):
         copied_landmarks = _copy_landmarks(landmarks)
@@ -330,8 +341,10 @@ class PoseSessionAnalyzer:
             playing = self._playing
             difficulty = self._difficulty
 
-        distance = _calculate_pose_distance(reference_landmarks, copied_landmarks)
-        tolerance = POSE_TOLERANCE_BY_LEVEL.get(difficulty, POSE_TOLERANCE_BY_LEVEL[5])
+        distance = _calculate_pose_distance(
+            reference_landmarks, copied_landmarks)
+        tolerance = POSE_TOLERANCE_BY_LEVEL.get(
+            difficulty, POSE_TOLERANCE_BY_LEVEL[5])
         accuracy = 0.0
         matched = False
         if distance is not None:
@@ -349,19 +362,22 @@ class PoseSessionAnalyzer:
 
             if distance is None:
                 self._streak = 0
-                self._reward_points_estimate = self._estimate_reward_points_locked(now)
+                self._reward_points_estimate = self._estimate_reward_points_locked(
+                    now)
                 return
 
             self._scored_frames += 1
             self._accuracy_sum += accuracy
-            self._average_accuracy = self._accuracy_sum / max(1, self._scored_frames)
+            self._average_accuracy = self._accuracy_sum / \
+                max(1, self._scored_frames)
             if matched:
                 self._matched_frames += 1
                 self._streak += 1
                 self._best_streak = max(self._best_streak, self._streak)
             else:
                 self._streak = 0
-            self._reward_points_estimate = self._estimate_reward_points_locked(now)
+            self._reward_points_estimate = self._estimate_reward_points_locked(
+                now)
 
     def _current_active_seconds_locked(self, now=None) -> int:
         now = time.time() if now is None else now
@@ -1026,7 +1042,8 @@ class VideoPanel(ctk.CTkFrame):
             frame_progress = 0.0
             if self._frame_count > 0:
                 frame_progress = (
-                    self.cap.get(cv2.CAP_PROP_POS_FRAMES) / float(self._frame_count)
+                    self.cap.get(cv2.CAP_PROP_POS_FRAMES) /
+                    float(self._frame_count)
                 )
 
             pose_landmarks = self._process_pose(frame, frame_progress)
@@ -1089,7 +1106,8 @@ class VideoPanel(ctk.CTkFrame):
             return pose_landmarks
 
         if self._panel_role == "reference":
-            self._pose_analyzer.update_reference(pose_landmarks, frame_progress)
+            self._pose_analyzer.update_reference(
+                pose_landmarks, frame_progress)
         else:
             self._pose_analyzer.update_user(pose_landmarks)
 
@@ -1255,6 +1273,7 @@ class App(ctk.CTk):
             row=0, column=1, padx=(8, 4), pady=8)
         self.right_panel.grid(
             row=0, column=2, padx=(4, 8), pady=8)
+        self._build_metrics_overlay()
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
@@ -1299,6 +1318,110 @@ class App(ctk.CTk):
         # Start checking connection to control the toast
         self.after(200, self._update_connection_toast)
         self.after(100, self._bring_to_front)
+
+    def _build_metrics_overlay(self):
+        self._metric_tiles = []
+        self._metric_value_labels = {}
+        tile_offset = METRICS_TILE_WIDTH + METRICS_TILE_GAP
+        for offset_x, (key, label) in zip((
+            -tile_offset,
+            0,
+            tile_offset,
+        ), (
+            ("accuracy", "Accuracy"),
+            ("combo", "Combo"),
+            ("points", "Points"),
+        )):
+            tile = self._create_metric_tile(offset_x)
+
+            title_label = tk.Label(
+                tile._metrics_frame,
+                text=label,
+                fg=METRICS_TILE_TEXT_COLOR,
+                bg=METRICS_TILE_COLOR,
+                font=("Arial", 18, "bold"),
+                anchor="w",
+                bd=0,
+                highlightthickness=0,
+            )
+            title_label.pack(fill="x", padx=24, pady=(22, 0))
+
+            value_label = tk.Label(
+                tile._metrics_frame,
+                text="--",
+                fg=METRICS_TILE_TEXT_COLOR,
+                bg=METRICS_TILE_COLOR,
+                font=("Arial", 18, "bold"),
+                anchor="w",
+                bd=0,
+                highlightthickness=0,
+            )
+            value_label.pack(fill="x", padx=24, pady=(20, 0))
+            self._metric_value_labels[key] = value_label
+            self._metric_tiles.append(tile)
+
+        self._lift_metrics_overlay()
+
+    def _create_metric_tile(self, offset_x: int):
+        tile = tk.Toplevel(self)
+        tile.overrideredirect(True)
+        tile.transient(self)
+        tile.configure(bg=METRICS_TILE_COLOR)
+        try:
+            tile.attributes("-alpha", METRICS_TILE_ALPHA)
+        except Exception:
+            pass
+        tile._metrics_offset_x = offset_x
+
+        frame = tk.Frame(
+            tile,
+            width=METRICS_TILE_WIDTH,
+            height=METRICS_TILE_HEIGHT,
+            bg=METRICS_TILE_COLOR,
+            highlightthickness=0,
+            bd=0,
+        )
+        frame.pack(fill="both", expand=True)
+        frame.pack_propagate(False)
+        tile._metrics_frame = frame
+
+        return tile
+
+    def _lift_metrics_overlay(self):
+        for tile in getattr(self, "_metric_tiles", []):
+            tile.lift()
+
+    def _position_metrics_overlay(self):
+        self.update_idletasks()
+        content_x = self.content.winfo_rootx()
+        content_y = self.content.winfo_rooty()
+        content_width = self.content.winfo_width()
+        content_height = self.content.winfo_height()
+        if content_width <= 1 or content_height <= 1:
+            return
+
+        center_x = content_x + content_width // 2
+        bottom_y = content_y + content_height - 22
+        for tile in getattr(self, "_metric_tiles", []):
+            offset_x = getattr(tile, "_metrics_offset_x", 0)
+            tile_x = int(center_x + offset_x - METRICS_TILE_WIDTH / 2)
+            tile_y = int(bottom_y - METRICS_TILE_HEIGHT)
+            tile.geometry(
+                f"{METRICS_TILE_WIDTH}x{METRICS_TILE_HEIGHT}+{tile_x}+{tile_y}"
+            )
+            tile.deiconify()
+
+    def _update_metrics_overlay(self):
+        metrics = self.pose_analyzer.get_status_payload()
+        accuracy = int(round(float(metrics.get("currentAccuracy", 0.0)) * 100))
+        combo = int(metrics.get("streak", 0) or 0)
+        points = int(metrics.get("rewardPointsEstimate", 0) or 0)
+
+        self._metric_value_labels["accuracy"].configure(text=f"{accuracy}%")
+        self._metric_value_labels["combo"].configure(text=f"{combo}x")
+        self._metric_value_labels["points"].configure(text=str(points))
+        self._position_metrics_overlay()
+        self._lift_metrics_overlay()
 
     def _bring_to_front(self):
         try:
@@ -1483,7 +1606,8 @@ class App(ctk.CTk):
         self.left_panel.grid(
             row=0, column=1, padx=(8, 4), pady=8)
         self.left_panel.set_paused(True)
-        self.pose_analyzer.start_session(song_title, difficulty=self._difficulty)
+        self.pose_analyzer.start_session(
+            song_title, difficulty=self._difficulty)
         self._apply_panel_proportion(
             self._left_panel_ratio,
             self._right_panel_ratio,
@@ -1563,6 +1687,7 @@ class App(ctk.CTk):
             # Draw whichever panel has a new frame; UI work stays minimal
             self.left_panel.draw_latest()
             self.right_panel.draw_latest()
+            self._update_metrics_overlay()
             self.after(self._delay, self._update_frames)
 
             # self._show_ip_popup()
@@ -1570,6 +1695,11 @@ class App(ctk.CTk):
     def on_closing(self):
         self._updating = False
         self.pose_analyzer.set_playing(False)
+        for tile in getattr(self, "_metric_tiles", []):
+            try:
+                tile.destroy()
+            except Exception:
+                pass
         self.left_panel.release()
         self.right_panel.release()
         self.sound_player.close()

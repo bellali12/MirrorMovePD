@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import socket
 import ipaddress
 import tkinter as tk
+from tkinter import messagebox
 import customtkinter as ctk
 from PIL import Image, ImageTk
 import cv2
@@ -19,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import traceback
 import wave
 from pathlib import Path
 from typing import Optional
@@ -708,6 +710,34 @@ def _set_current_song_level(level: int):
     }
 
 
+def _app_log_dir() -> Path:
+    return Path.home() / "Library" / "Logs" / "MirrorMove PD"
+
+
+def _log_error(message: str, error: Optional[BaseException] = None):
+    try:
+        log_dir = _app_log_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        with (log_dir / "error.log").open("a", encoding="utf-8") as log_file:
+            log_file.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}\n")
+            if error is not None:
+                log_file.write("".join(traceback.format_exception(error)))
+    except Exception:
+        pass
+
+
+def _find_executable(name: str) -> Optional[str]:
+    path = shutil.which(name)
+    if path:
+        return path
+
+    for directory in ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"):
+        candidate = Path(directory) / name
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
 class SoundPlayer:
     def __init__(self, path: str):
         self.path = path
@@ -722,10 +752,13 @@ class SoundPlayer:
             "mirrormotion_audio_cache"
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        self._mpg123_path = shutil.which("mpg123")
-        self._lame_path = shutil.which("lame")
+        self._mpg123_path = _find_executable("mpg123")
+        self._lame_path = _find_executable("lame")
 
-        self._load_source(path)
+        try:
+            self._load_source(path)
+        except Exception as exc:
+            _log_error("Audio disabled during startup", exc)
 
     def _decoded_audio_path(self, path: str) -> str:
         source = Path(path)
@@ -894,7 +927,11 @@ class SoundPlayer:
 
         was_playing = self._should_play
         self._should_play = False
-        self._load_source(path)
+        try:
+            self._load_source(path)
+        except Exception as exc:
+            _log_error(f"Unable to load audio source: {path}", exc)
+            return
         if was_playing:
             self.start()
 
@@ -1708,13 +1745,29 @@ class App(ctk.CTk):
 
 
 if __name__ == "__main__":
-    # Start Flask server in the background so mobile app can connect
-    server_thread = threading.Thread(
-        target=run_flask, kwargs={"host": "0.0.0.0", "port": SERVER_PORT}, daemon=True
-    )
-    server_thread.start()
+    try:
+        # Start Flask server in the background so mobile app can connect
+        server_thread = threading.Thread(
+            target=run_flask, kwargs={"host": "0.0.0.0", "port": SERVER_PORT}, daemon=True
+        )
+        server_thread.start()
 
-    app = App()
-    app.geometry(f"{2*VIDEO_WIDTH + 80}x{VIDEO_HEIGHT + 80}")
-    app.minsize(VIDEO_WIDTH*2 + 80, VIDEO_HEIGHT + 80 + 40)
-    app.mainloop()
+        app = App()
+        app.geometry(f"{2*VIDEO_WIDTH + 80}x{VIDEO_HEIGHT + 80}")
+        app.minsize(VIDEO_WIDTH*2 + 80, VIDEO_HEIGHT + 80 + 40)
+        app.mainloop()
+    except Exception as exc:
+        _log_error("MirrorMove PD failed during startup", exc)
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror(
+                "MirrorMove PD",
+                "MirrorMove PD could not finish starting.\n\n"
+                "A diagnostic log was saved to:\n"
+                f"{_app_log_dir() / 'error.log'}",
+            )
+            root.destroy()
+        except Exception:
+            pass
+        raise

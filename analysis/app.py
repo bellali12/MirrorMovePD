@@ -13,7 +13,6 @@ import threading
 import time
 import os
 import math
-import simpleaudio as sa
 import queue
 import random
 import shutil
@@ -64,7 +63,6 @@ SESSION_TITLES = [
 SESSION_FILES = [resource_path(f"videos/{title}.mp4")
                  for title in SESSION_TITLES]
 REFERENCE_VIDEO_PATH = SESSION_FILES[0]
-SONG_TO_INDEX = {title: index for index, title in enumerate(SESSION_TITLES)}
 
 
 USER_CAMERA_INDEX = 0
@@ -84,6 +82,26 @@ STITCH_FACE_PATH = resource_path("images/stitch face.png")
 
 # Allow overriding the Flask port (useful if it is taken by something else)
 SERVER_PORT = int(os.environ.get("MIRRORMOTION_PORT", "5003"))
+
+
+def _configured_camera_source():
+    override = os.environ.get("MIRRORMOTION_CAMERA_SOURCE", "").strip()
+    if not override:
+        return USER_CAMERA_INDEX
+
+    if override.lower() in {"none", "off", "disabled"}:
+        return None
+
+    try:
+        return int(override)
+    except ValueError:
+        path = Path(override).expanduser()
+        if not path.is_absolute():
+            path = Path(resource_path(override))
+        return str(path)
+
+
+USER_CAMERA_SOURCE = _configured_camera_source()
 
 # ----- Flask Server -----
 flask_app = Flask(__name__)
@@ -480,7 +498,7 @@ def session_metrics():
 
 @flask_app.route('/song_data', methods=['POST'])
 def song_data():
-    data = request.json
+    data = request.json or {}
     print(f"Received song data: {data}")
     _register_song_metadata(data)
     target_name = data.get("title", "")
@@ -489,12 +507,28 @@ def song_data():
     if matched_video:
         title = Path(matched_video).stem
         print(f"Matched video file: {matched_video}")
+        _register_song_metadata({**data, "title": title})
         _set_current_song(title, playing=False)
         command_queue.put(f"start_new_session:{title}")
+        matched_audio = (
+            _find_audio_path_by_title(target_name) or
+            _find_audio_path_by_title(title)
+        )
+        return jsonify({
+            "status": "received",
+            "matched": True,
+            "title": title,
+            "video": Path(matched_video).name,
+            "audio": Path(matched_audio).name if matched_audio else None,
+        }), 200
     else:
         print(f"No matching video found for: {target_name}")
 
-    return jsonify({"status": "received"}), 200
+    return jsonify({
+        "status": "not_found",
+        "matched": False,
+        "title": target_name,
+    }), 404
 
 
 @flask_app.route('/command', methods=['POST'])
@@ -600,11 +634,21 @@ def _normalize_media_name(value: str) -> str:
     return " ".join(str(value).strip().lower().split())
 
 
-def _find_video_path_by_title(title: str):
-    target = _normalize_media_name(title)
+def _media_titles_match(left: str, right: str) -> bool:
+    normalized_left = _normalize_media_name(left)
+    normalized_right = _normalize_media_name(right)
+    if not normalized_left or not normalized_right:
+        return False
+    return (
+        normalized_left == normalized_right
+        or normalized_left in normalized_right
+        or normalized_right in normalized_left
+    )
 
+
+def _find_video_path_by_title(title: str):
     for path in SESSION_FILES:
-        if _normalize_media_name(Path(path).stem) == target:
+        if _media_titles_match(title, Path(path).stem):
             return path
 
     videos_dir = Path(VIDEOS_DIR)
@@ -613,13 +657,12 @@ def _find_video_path_by_title(title: str):
 
     for path in videos_dir.iterdir():
         if path.is_file() and path.suffix.lower() == ".mp4":
-            if _normalize_media_name(path.stem) == target:
+            if _media_titles_match(title, path.stem):
                 return str(path)
     return None
 
 
 def _find_audio_path_by_title(title: str):
-    target = _normalize_media_name(title)
     audio_dir = Path(AUDIO_DIR)
     if not audio_dir.exists():
         return None
@@ -631,8 +674,15 @@ def _find_audio_path_by_title(title: str):
     audio_paths.sort(key=lambda path: 0 if path.suffix.lower()
                      == ".wav" else 1)
     for path in audio_paths:
-        if target in _normalize_media_name(path.stem):
+        if _media_titles_match(title, path.stem):
             return str(path)
+    return None
+
+
+def _find_session_index_by_title(title: str):
+    for index, path in enumerate(SESSION_FILES):
+        if _media_titles_match(title, Path(path).stem):
+            return index
     return None
 
 
@@ -743,6 +793,65 @@ def _find_executable(name: str) -> Optional[str]:
         if candidate.exists() and os.access(candidate, os.X_OK):
             return str(candidate)
     return None
+
+
+def _is_camera_source(source) -> bool:
+    return isinstance(source, int)
+
+
+def _camera_probe_command(source: int):
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--camera-probe", str(source)]
+    return [
+        sys.executable,
+        os.path.abspath(__file__),
+        "--camera-probe",
+        str(source),
+    ]
+
+
+def _probe_camera_source(source, timeout_seconds: float = 8.0) -> bool:
+    if source is None:
+        return False
+    if not _is_camera_source(source):
+        return True
+
+    try:
+        result = subprocess.run(
+            _camera_probe_command(source),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        _log_error("Camera probe timed out before startup", exc)
+        return False
+    except Exception as exc:
+        _log_error("Camera probe failed before startup", exc)
+        return False
+
+    if result.returncode != 0:
+        _log_error(f"Camera probe exited with status {result.returncode}")
+        return False
+    return True
+
+
+def _run_camera_probe(source_arg: str) -> int:
+    try:
+        source = int(source_arg)
+    except ValueError:
+        source = source_arg
+
+    cap = cv2.VideoCapture(source)
+    try:
+        if not cap.isOpened():
+            return 2
+        ok, _ = cap.read()
+        return 0 if ok else 3
+    finally:
+        if cap.isOpened():
+            cap.release()
 
 
 class SoundPlayer:
@@ -953,6 +1062,56 @@ class SoundPlayer:
     def close(self):
         self._should_play = False
         self._close_stream()
+
+
+class PlaceholderVideoPanel(ctk.CTkFrame):
+    def __init__(
+        self,
+        parent,
+        display_width=VIDEO_WIDTH,
+        display_height=VIDEO_HEIGHT,
+        title="Camera unavailable",
+        message="Enable camera access for MirrorMove PD in System Settings, then reopen the app.",
+    ):
+        super().__init__(parent, fg_color="#2f2a32")
+        self._display_width = 0
+        self._display_height = 0
+        self.pack_propagate(False)
+
+        self.label = ctk.CTkLabel(
+            self,
+            text=f"{title}\n\n{message}",
+            text_color="#ffffff",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            justify="center",
+            wraplength=max(220, display_width - 40),
+        )
+        self.label.pack(expand=True, fill="both", padx=24, pady=24)
+        self.set_display_size(display_width, display_height)
+
+    def get_display_size(self):
+        return self._display_width, self._display_height
+
+    def set_display_size(self, width: int, height: int):
+        width = max(1, int(round(width)))
+        height = max(1, int(round(height)))
+        self._display_width = width
+        self._display_height = height
+        self.configure(width=width + 20, height=height + 20)
+        self.label.configure(
+            width=width,
+            height=height,
+            wraplength=max(220, width - 40),
+        )
+
+    def set_paused(self, paused: bool):
+        pass
+
+    def draw_latest(self):
+        pass
+
+    def release(self):
+        pass
 
 
 class VideoPanel(ctk.CTkFrame):
@@ -1252,11 +1411,15 @@ class VideoPanel(ctk.CTkFrame):
 
     def release(self):
         self._running = False
+        self._paused = False
         try:
             if self._reader_thread.is_alive():
-                self._reader_thread.join(timeout=0.5)
+                self._reader_thread.join(timeout=2.0)
         except Exception:
             pass
+        if self._reader_thread.is_alive():
+            _log_error("Video reader thread did not stop before release")
+            return
         if self._face_detection is not None:
             self._face_detection.close()
         if self._pose is not None:
@@ -1315,16 +1478,19 @@ class App(ctk.CTk):
             panel_role="reference",
             pose_analyzer=self.pose_analyzer,
         )
-        self.right_panel = VideoPanel(
-            self.content,
-            USER_CAMERA_INDEX,
-            face_overlay_path=STITCH_FACE_PATH,
-            panel_role="user",
-            pose_analyzer=self.pose_analyzer,
-            draw_pose_landmarks=True,
-        )
-        # Webcam view is never paused
-        self.right_panel.set_paused(False)
+        if _probe_camera_source(USER_CAMERA_SOURCE):
+            self.right_panel = VideoPanel(
+                self.content,
+                USER_CAMERA_SOURCE,
+                face_overlay_path=STITCH_FACE_PATH,
+                panel_role="user",
+                pose_analyzer=self.pose_analyzer,
+                draw_pose_landmarks=True,
+            )
+            # Webcam view is never paused
+            self.right_panel.set_paused(False)
+        else:
+            self.right_panel = PlaceholderVideoPanel(self.content)
 
         self.left_panel.grid(
             row=0, column=1, padx=(8, 4), pady=8)
@@ -1611,7 +1777,7 @@ class App(ctk.CTk):
 
         elif command.startswith("start_new_session"):
             song_name = command.split(":", 1)[1]
-            song_idx = SONG_TO_INDEX.get(song_name)
+            song_idx = _find_session_index_by_title(song_name)
             if song_idx is None:
                 print(f"Unknown session requested: {song_name}")
                 return
@@ -1761,10 +1927,13 @@ class App(ctk.CTk):
         self.right_panel.release()
         self.sound_player.close()
         self._hide_ip_toast()
-        self.destroy()
+        os._exit(0)
 
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 3 and sys.argv[1] == "--camera-probe":
+        sys.exit(_run_camera_probe(sys.argv[2]))
+
     try:
         # Start Flask server in the background so mobile app can connect
         server_thread = threading.Thread(
@@ -1776,6 +1945,7 @@ if __name__ == "__main__":
         app.geometry(f"{2*VIDEO_WIDTH + 80}x{VIDEO_HEIGHT + 80}")
         app.minsize(VIDEO_WIDTH*2 + 80, VIDEO_HEIGHT + 80 + 40)
         app.mainloop()
+        os._exit(0)
     except Exception as exc:
         _log_error("MirrorMove PD failed during startup", exc)
         try:

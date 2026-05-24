@@ -1,11 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files
+
+mediapipe_datas = collect_data_files('mediapipe')
 
 a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[('videos', 'videos'), ('audio', 'audio'), ('images', 'images')],
+    datas=[('videos', 'videos'), ('audio', 'audio'), ('images', 'images')] + mediapipe_datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

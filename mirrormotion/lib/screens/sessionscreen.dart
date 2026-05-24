@@ -880,7 +880,8 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
 
     // Dev shortcuts (same machine / emulators)
     if (s == "localhost" || s == "127.0.0.1" || s == "10.0.2.2") {
-      return [s.contains(":") ? s : "$s:5003"];
+      final host = s.contains(":") ? s : "$s:5003";
+      return [host, host];
     }
 
     if (s.startsWith("http://")) s = s.substring(7);
@@ -898,14 +899,32 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
     // Short code like "4.23"
     final looksShort = RegExp(r'^\d{1,3}\.\d{1,3}$').hasMatch(host);
     String originalHost = "";
-    String altHost = "";
+    String altHost = host;
     if (looksShort) {
       originalHost = "192.168.$host";
       altHost = "10.100.$host";
+    } else {
+      originalHost = host;
     }
 
     port ??= "5003";
     return ["$originalHost:$port", "$altHost:$port"];
+  }
+
+  Future<bool> _sendInitialSongRequestOrShowError() async {
+    final initialRequestOk = await sendInitialSongRequest();
+    print("initial request $initialRequestOk");
+    if (!mounted) {
+      return false;
+    }
+    if (!initialRequestOk) {
+      setState(
+        () =>
+            _error = "Connected, but the desktop could not start this session.",
+      );
+      return false;
+    }
+    return true;
   }
 
   Future<void> _connect() async {
@@ -943,9 +962,9 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
       if (resp.statusCode == 200) {
         if (!mounted) return;
         dataService.desktopAppUrl = "http://${host[0]}";
-        final initialRequestOk = await sendInitialSongRequest();
-        print("initial request $initialRequestOk");
+        final initialRequestOk = await _sendInitialSongRequestOrShowError();
         if (!mounted) return;
+        if (!initialRequestOk) return;
         Navigator.of(context).pop(true); // success; parent marks connected
       } else {
         // Attempt the altHost
@@ -960,9 +979,9 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
         if (altResp.statusCode == 200) {
           if (!mounted) return;
           dataService.desktopAppUrl = "http://${host[1]}";
-          final initialRequestOk = await sendInitialSongRequest();
-          print("initial request $initialRequestOk");
+          final initialRequestOk = await _sendInitialSongRequestOrShowError();
           if (!mounted) return;
+          if (!initialRequestOk) return;
           Navigator.of(context).pop(true); // success; parent marks connected
           return;
         }
@@ -984,9 +1003,9 @@ class _ConnectionPopUpState extends State<ConnectionPopUp> {
         if (!mounted) return;
 
         dataService.desktopAppUrl = "http://${host[1]}";
-        final initialRequestOk = await sendInitialSongRequest();
-        print("initial request $initialRequestOk");
+        final initialRequestOk = await _sendInitialSongRequestOrShowError();
         if (!mounted) return;
+        if (!initialRequestOk) return;
         Navigator.of(context).pop(true); // success; parent marks connected
         return;
       }

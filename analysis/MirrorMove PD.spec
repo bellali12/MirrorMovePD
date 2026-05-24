@@ -19,10 +19,9 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
     name='MirrorMove PD',
+    exclude_binaries=True,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -37,9 +36,23 @@ exe = EXE(
     entitlements_file=None,
     icon=['mirrormovepd.ico'],
 )
-app = BUNDLE(
+coll = COLLECT(
     exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='MirrorMove PD',
+)
+app = BUNDLE(
+    coll,
     name='MirrorMove PD.app',
     icon='mirrormovepd.ico',
-    bundle_identifier=None,
+    bundle_identifier='com.mirrormotion.mirrormovepd',
+    info_plist={
+        'CFBundleDisplayName': 'MirrorMove PD',
+        'NSCameraUsageDescription': 'MirrorMove PD uses the camera to mirror your movement during dance sessions.',
+        'NSMicrophoneUsageDescription': 'MirrorMove PD may use audio access for session playback.',
+    },
 )

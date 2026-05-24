@@ -624,11 +624,12 @@ def _find_audio_path_by_title(title: str):
     if not audio_dir.exists():
         return None
 
-    for path in sorted(audio_dir.iterdir()):
-        if not path.is_file():
-            continue
-        if path.suffix.lower() not in {".mp3", ".wav"}:
-            continue
+    audio_paths = [
+        path for path in sorted(audio_dir.iterdir())
+        if path.is_file() and path.suffix.lower() in {".wav", ".mp3"}
+    ]
+    audio_paths.sort(key=lambda path: 0 if path.suffix.lower() == ".wav" else 1)
+    for path in audio_paths:
         if target in _normalize_media_name(path.stem):
             return str(path)
     return None
@@ -721,7 +722,11 @@ def _log_error(message: str, error: Optional[BaseException] = None):
         with (log_dir / "error.log").open("a", encoding="utf-8") as log_file:
             log_file.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}\n")
             if error is not None:
-                log_file.write("".join(traceback.format_exception(error)))
+                log_file.write("".join(
+                    traceback.format_exception(
+                        type(error), error, error.__traceback__
+                    )
+                ))
     except Exception:
         pass
 
@@ -962,8 +967,14 @@ class VideoPanel(ctk.CTkFrame):
     ):
         super().__init__(parent)
         self.cap = cv2.VideoCapture(source)
+        self._capture_available = self.cap.isOpened()
         if not self.cap.isOpened():
-            raise ValueError("Unable to open video source", source)
+            if isinstance(source, int):
+                _log_error(
+                    f"Camera source {source} was unavailable; continuing without camera."
+                )
+            else:
+                raise ValueError("Unable to open video source", source)
         self._rotation_degrees = int(self.cap.get(
             cv2.CAP_PROP_ORIENTATION_META) or 0) % 360
         self._frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
@@ -995,7 +1006,11 @@ class VideoPanel(ctk.CTkFrame):
             pass
 
         self.label = ctk.CTkLabel(
-            self, text="", width=VIDEO_WIDTH, height=VIDEO_HEIGHT)
+            self,
+            text="" if self._capture_available else "Camera unavailable",
+            width=VIDEO_WIDTH,
+            height=VIDEO_HEIGHT,
+        )
         self.label.pack(expand=True, padx=10, pady=10)
 
         # Worker thread state
@@ -1058,6 +1073,9 @@ class VideoPanel(ctk.CTkFrame):
     def _reader_loop(self):
         next_t = time.monotonic()
         while self._running:
+            if not self._capture_available:
+                time.sleep(0.25)
+                continue
 
             if self._paused:
                 time.sleep(0.05)

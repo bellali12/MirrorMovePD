@@ -75,7 +75,7 @@ APP_BG_COLOR = "#d9d9d9"
 METRICS_TILE_COLOR = "#5C5360"
 METRICS_TILE_TEXT_COLOR = "#FFFFFF"
 METRICS_TILE_ALPHA = 0.70
-METRICS_TILE_WIDTH = 120
+METRICS_TILE_WIDTH = 130
 METRICS_TILE_HEIGHT = 100
 METRICS_TILE_GAP = 42
 
@@ -628,7 +628,8 @@ def _find_audio_path_by_title(title: str):
         path for path in sorted(audio_dir.iterdir())
         if path.is_file() and path.suffix.lower() in {".wav", ".mp3"}
     ]
-    audio_paths.sort(key=lambda path: 0 if path.suffix.lower() == ".wav" else 1)
+    audio_paths.sort(key=lambda path: 0 if path.suffix.lower()
+                     == ".wav" else 1)
     for path in audio_paths:
         if target in _normalize_media_name(path.stem):
             return str(path)
@@ -720,7 +721,8 @@ def _log_error(message: str, error: Optional[BaseException] = None):
         log_dir = _app_log_dir()
         log_dir.mkdir(parents=True, exist_ok=True)
         with (log_dir / "error.log").open("a", encoding="utf-8") as log_file:
-            log_file.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}\n")
+            log_file.write(
+                f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}\n")
             if error is not None:
                 log_file.write("".join(
                     traceback.format_exception(
